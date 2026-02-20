@@ -395,16 +395,21 @@ export default function App() {
           </div>
 
           {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 0 }}>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 12 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Net Worth</p>
+            <p style={{ margin: "0 0 4px", fontSize: 28, fontWeight: 800, color: T.text, letterSpacing: -0.5 }}>฿{fmt(netWorth)}</p>
+            <p style={{ margin: 0, fontSize: 11, color: T.dim }}>All assets combined</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 0 }}>
             {[
-              { label: "Net Worth", value: `฿${fmt(netWorth)}`, color: T.text, sub: "All assets combined" },
+              { label: "Initial Investment", value: `฿${fmt(totalInvested)}`, color: T.text, sub: "Cost basis" },
               { label: "Investments", value: `฿${fmt(totalInvest)}`, color: T.muted, sub: "Long-term core" },
-              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(1)}% of core` },
               { label: "Investment P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(2)}%` },
+              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(1)}% of core` },
             ].map(s => (
               <div key={s.label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
-                <p style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
+                <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</p>
                 <p style={{ margin: 0, fontSize: 10, color: T.dim }}>{s.sub}</p>
               </div>
             ))}
