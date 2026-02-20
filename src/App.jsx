@@ -31,15 +31,7 @@ const CATEGORY_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-const DEFAULT_ASSETS = [
-  { id: "1", name: "SCBS&P500A", type: "equity", invested: 3000, currentValue: 4034.95, currency: "THB", color: "#3b82f6", notes: "SCB S&P500 fund", isSpeculative: false },
-  { id: "2", name: "SCBGOLDH", type: "gold", invested: 1000, currentValue: 2334.16, currency: "THB", color: "#eab308", notes: "Gold fund THB hedged", isSpeculative: false },
-  { id: "3", name: "K-SET50", type: "index", invested: 5500, currentValue: 6587.33, currency: "THB", color: "#22c55e", notes: "Thai SET50 index fund", isSpeculative: false },
-  { id: "4", name: "SET Stocks (PTT,SAT,SCB)", type: "stock", invested: 500, currentValue: 651, currency: "THB", color: "#f97316", notes: "Hold PTT & SCB only", isSpeculative: false },
-  { id: "5", name: "Sansiri Bond", type: "bond", invested: 20000, currentValue: 20856, currency: "THB", color: "#a855f7", notes: "4.2%/yr · Matures Sep 2026 · Move to K-US500X-A", isSpeculative: false },
-  { id: "6", name: "Forex XAUUSD Acc1", type: "forex", invested: 0, currentValue: 2819, currency: "THB", color: "#f97316", notes: "$77.22 USD · Speculation only", isSpeculative: true },
-  { id: "7", name: "Forex XAUUSD Acc2", type: "forex", invested: 0, currentValue: 3535, currency: "THB", color: "#fb923c", notes: "$96.85 USD · Speculation only", isSpeculative: true },
-];
+const DEFAULT_ASSETS = [];
 
 const DEFAULT_SETTINGS = { dca: 1000, specCap: 10 };
 
