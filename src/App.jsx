@@ -497,7 +497,7 @@ export default function App() {
         {tab === "speculative" && (
           <div>
             <div style={{ background: specOver > 0 ? "#1f0e00" : "#10061e", border: `1px solid ${specOver > 0 ? T.orange + "55" : T.purple + "44"}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
-              <div style={{ display: "flex", justifycontent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Speculation Size vs Investments</p>
                   <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: specOver > 0 ? T.orange : T.purple }}>
