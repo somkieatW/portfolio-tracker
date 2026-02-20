@@ -292,9 +292,11 @@ export default function App() {
   const totalInvest = investments.reduce((s, a) => s + a.currentValue, 0);
   const totalInvested = investments.reduce((s, a) => s + a.invested, 0);
   const totalSpec = speculative.reduce((s, a) => s + a.currentValue, 0);
-  const grandTotal = totalInvest + totalSpec;
+  const netWorth = totalInvest + totalSpec;
+  const grandTotal = totalInvest; // Grand Total is now ONLY true investments
   const totalPL = totalInvest - totalInvested;
   const totalPLpct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
+  // Speculation is tracked relative to the main investment portfolio size
   const specPct = grandTotal > 0 ? (totalSpec / grandTotal) * 100 : 0;
   const specCap = grandTotal * (settings.specCap / 100);
   const specOver = totalSpec - specCap;
@@ -375,10 +377,10 @@ export default function App() {
           {/* Stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 0 }}>
             {[
-              { label: "Grand Total", value: `฿${fmt(grandTotal)}`, color: T.text, sub: `${assets.length} assets` },
-              { label: "Invested", value: `฿${fmt(totalInvested)}`, color: T.muted, sub: "cost basis" },
-              { label: "Total P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(1)}%` },
-              { label: "Speculation", value: `${specPct.toFixed(1)}%`, color: specOver > 0 ? T.orange : T.green, sub: specOver > 0 ? `⚠ over ${settings.specCap}% cap` : `✓ within ${settings.specCap}% cap` },
+              { label: "Net Worth", value: `฿${fmt(netWorth)}`, color: T.text, sub: "All assets combined" },
+              { label: "Investments", value: `฿${fmt(totalInvest)}`, color: T.muted, sub: "Long-term core" },
+              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(1)}% of core` },
+              { label: "Investment P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(2)}%` },
             ].map(s => (
               <div key={s.label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
@@ -494,25 +496,25 @@ export default function App() {
         {/* SPECULATIVE */}
         {tab === "speculative" && (
           <div>
-            <div style={{ background: specOver > 0 ? "#1f0e00" : "#061a0e", border: `1px solid ${specOver > 0 ? T.orange + "55" : T.green + "44"}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+            <div style={{ background: specOver > 0 ? "#1f0e00" : "#10061e", border: `1px solid ${specOver > 0 ? T.orange + "55" : T.purple + "44"}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifycontent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
-                  <p style={{ margin: "0 0 4px", fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Speculation Cap ({settings.specCap}%)</p>
-                  <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: specOver > 0 ? T.orange : T.green }}>
-                    {specOver > 0 ? `⚠️ ${specPct.toFixed(1)}% — Over Cap` : `✓ ${specPct.toFixed(1)}% — Within Cap`}
+                  <p style={{ margin: "0 0 4px", fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Speculation Size vs Investments</p>
+                  <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: specOver > 0 ? T.orange : T.purple }}>
+                    {specOver > 0 ? `⚠️ ${specPct.toFixed(1)}% — Over Target Limit (${settings.specCap}%)` : `✓ ${specPct.toFixed(1)}% — Within Limit (${settings.specCap}%)`}
                   </p>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <p style={{ margin: "0 0 2px", fontSize: 10, color: T.muted }}>Cap limit</p>
+                  <p style={{ margin: "0 0 2px", fontSize: 10, color: T.muted }}>Target Limit</p>
                   <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: T.text }}>฿{fmt(specCap)}</p>
                 </div>
               </div>
               <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 6, height: 8, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min((totalSpec / specCap) * 100, 100)}%`, background: specOver > 0 ? T.orange : T.green, height: "100%", borderRadius: 6 }} />
+                <div style={{ width: `${Math.min((totalSpec / specCap) * 100, 100)}%`, background: specOver > 0 ? T.orange : T.purple, height: "100%", borderRadius: 6 }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                <span style={{ fontSize: 11, color: T.muted }}>Current: ฿{fmt(totalSpec)}</span>
-                <span style={{ fontSize: 11, color: specOver > 0 ? T.orange : T.green }}>{specOver > 0 ? `Over by ฿${fmt(specOver)}` : `Under by ฿${fmt(Math.abs(specOver))}`}</span>
+                <span style={{ fontSize: 11, color: T.muted }}>Current Size: ฿{fmt(totalSpec)}</span>
+                <span style={{ fontSize: 11, color: specOver > 0 ? T.orange : T.purple }}>{specOver > 0 ? `Over by ฿${fmt(specOver)}` : `Under by ฿${fmt(Math.abs(specOver))}`}</span>
               </div>
             </div>
 
@@ -598,7 +600,7 @@ export default function App() {
           <div>
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
               <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: T.text }}>Portfolio Settings</p>
-              <Field label={`Speculation Cap — ${settings.specCap}%`} hint="Max % of grand total allowed in speculative assets">
+              <Field label={`Speculation Limit — ${settings.specCap}%`} hint="Target limit for speculative assets compared to main investments">
                 <input type="range" min="5" max="30" step="1" value={settings.specCap} onChange={e => updateSettings("specCap", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.orange }} />
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 11, color: T.muted }}>5%</span>
