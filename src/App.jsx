@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
-import { loadPortfolio, savePortfolio, getDeviceId } from "./supabase.js";
+import { loadPortfolio, savePortfolio, getDeviceId, supabase } from "./supabase.js";
+import Auth from "./Auth.jsx";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -234,6 +235,8 @@ function CustomTip({ active, payload }) {
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [assets, setAssets] = useState(DEFAULT_ASSETS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [tab, setTab] = useState("dashboard");
@@ -241,13 +244,34 @@ export default function App() {
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
-  const [deviceId] = useState(() => getDeviceId());
+
+  // ── Auth Listener ──
+  useEffect(() => {
+    if (!supabase) {
+      setIsAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const userId = session?.user?.id || (!supabase ? getDeviceId() : null);
 
   // ── Load from Supabase on mount ──
   useEffect(() => {
+    if (!userId) return; // Wait until authenticated
     async function load() {
       try {
-        const data = await loadPortfolio(deviceId);
+        const data = await loadPortfolio(userId);
         if (data?.assets) setAssets(data.assets);
         if (data?.settings) setSettings(data.settings);
         setLoadStatus("ready");
@@ -256,19 +280,19 @@ export default function App() {
       }
     }
     load();
-  }, [deviceId]);
+  }, [userId]);
 
   // ── Debounced save to Supabase ──
   useEffect(() => {
-    if (loadStatus !== "ready") return;
+    if (loadStatus !== "ready" || !userId) return;
     setSaveStatus("saving");
     const timer = setTimeout(async () => {
-      const ok = await savePortfolio(deviceId, assets, settings);
+      const ok = await savePortfolio(userId, assets, settings);
       setSaveStatus(ok ? "saved" : "error");
       if (ok) setTimeout(() => setSaveStatus(null), 2000);
     }, 800);
     return () => clearTimeout(timer);
-  }, [assets, settings, loadStatus, deviceId]);
+  }, [assets, settings, loadStatus, userId]);
 
   // ── Computed ──
   const investments = assets.filter(a => !a.isSpeculative);
@@ -318,14 +342,19 @@ export default function App() {
   ];
 
   // ── Loading screen ──
-  if (loadStatus === "loading") {
+  if (isAuthLoading || (userId && loadStatus === "loading")) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 16, background: T.bg }}>
         <div style={{ width: 40, height: 40, border: `3px solid ${T.border}`, borderTop: `3px solid ${T.accent}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        <p style={{ color: T.muted, fontSize: 14 }}>Loading your portfolio…</p>
+        <p style={{ color: T.muted, fontSize: 14 }}>{isAuthLoading ? "Checking session…" : "Loading your portfolio…"}</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
+  }
+
+  // ── Auth Screen ──
+  if (!userId) {
+    return <Auth />;
   }
 
   return (
@@ -338,10 +367,15 @@ export default function App() {
             <div>
               <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: T.accent, letterSpacing: 1.5, textTransform: "uppercase" }}>Wealth Tracker Pro</p>
               <h1 style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 700, letterSpacing: -0.5 }}>My Portfolio</h1>
-              <p style={{ margin: 0, fontSize: 11, color: T.dim }}>Device ID: {deviceId.slice(0, 14)}…</p>
+              <p style={{ margin: 0, fontSize: 11, color: T.dim }}>
+                {session?.user?.email ? `Logged in as ${session.user.email}` : "Offline Mode (Local Storage)"}
+              </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-              <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accent, border: "none", borderRadius: 10, color: "#fff", padding: "10px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>+ Add Asset</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                {supabase && <button onClick={() => supabase.auth.signOut()} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, color: T.muted, padding: "10px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", transition: "all 0.2s" }} onMouseOver={e => e.target.style.background = "rgba(255,255,255,0.05)"} onMouseOut={e => e.target.style.background = "transparent"}>Log Out</button>}
+                <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accent, border: "none", borderRadius: 10, color: "#fff", padding: "10px 16px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>+ Add Asset</button>
+              </div>
               <SaveBadge status={saveStatus} />
             </div>
           </div>

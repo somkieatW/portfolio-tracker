@@ -19,35 +19,35 @@ export function getDeviceId() {
   return id
 }
 
-// Load portfolio data for this device
-export async function loadPortfolio(deviceId) {
+// Load portfolio data for this user
+export async function loadPortfolio(userId) {
   // Fall back to localStorage if Supabase is not configured
   if (!supabase) {
-    const localData = localStorage.getItem(`portfolio_data_${deviceId}`);
+    const localData = localStorage.getItem(`portfolio_data_${userId}`);
     return localData ? JSON.parse(localData) : null;
   }
 
   const { data, error } = await supabase
     .from('portfolio')
     .select('assets, settings')
-    .eq('user_id', deviceId)
+    .eq('user_id', userId)
     .single()
 
   if (error || !data) return null
   return data
 }
 
-// Save (upsert) portfolio data for this device
-export async function savePortfolio(deviceId, assets, settings) {
+// Save (upsert) portfolio data for this user
+export async function savePortfolio(userId, assets, settings) {
   // Always save locally as a backup / offline mode
-  localStorage.setItem(`portfolio_data_${deviceId}`, JSON.stringify({ assets, settings }));
+  localStorage.setItem(`portfolio_data_${userId}`, JSON.stringify({ assets, settings }));
 
   if (!supabase) return true;
 
   const { error } = await supabase
     .from('portfolio')
     .upsert({
-      user_id: deviceId,
+      user_id: userId,
       assets: assets,
       settings: settings,
       updated_at: new Date().toISOString(),
