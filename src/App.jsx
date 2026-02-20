@@ -395,7 +395,7 @@ export default function App() {
           </div>
 
           {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 0 }}>
             {[
               { label: "Net Worth", value: `฿${fmt(netWorth)}`, color: T.text, sub: "All assets combined" },
               { label: "Investments", value: `฿${fmt(totalInvest)}`, color: T.muted, sub: "Long-term core" },
@@ -447,7 +447,7 @@ export default function App() {
             </div>
 
             {/* Pie + top performers */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 16 }}>
               <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 16 }}>
                 <p style={{ margin: "0 0 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Sectors / Diversification</p>
                 <ResponsiveContainer width="100%" height={160}>
@@ -478,7 +478,7 @@ export default function App() {
 
             {/* Quick update */}
             <p style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 12px" }}>Quick Update Values</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
               {assets.map(a => (
                 <div key={a.id} onClick={() => { setEditingAsset(a); setModal("update"); }}
                   style={{ background: T.card, border: `1px solid ${T.border}`, borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}>
