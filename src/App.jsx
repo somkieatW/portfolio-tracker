@@ -403,7 +403,7 @@ export default function App() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 0 }}>
             {[
               { label: "Initial Investment", value: `฿${fmt(totalInvested)}`, color: T.text, sub: "Cost basis" },
-              { label: "Investments", value: `฿${fmt(totalInvest)}`, color: T.muted, sub: "Long-term core" },
+              { label: "Core Portfolio", value: `฿${fmt(totalInvest)}`, color: T.accent, sub: "Long-term safe assets" },
               { label: "Investment P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(2)}%` },
               { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(1)}% of core` },
             ].map(s => (
