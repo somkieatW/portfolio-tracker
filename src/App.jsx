@@ -309,7 +309,27 @@ export default function App() {
     });
   })();
 
-  const pieData = investments.map(a => ({ name: a.name, value: a.currentValue, color: a.color, pct: ((a.currentValue / totalInvest) * 100).toFixed(1) }));
+  // Group investments by category for the pie chart
+  const pieData = (() => {
+    const groups = investments.reduce((acc, a) => {
+      acc[a.type] = (acc[a.type] || 0) + a.currentValue;
+      return acc;
+    }, {});
+
+    return Object.entries(groups)
+      .map(([type, value]) => {
+        const cat = CATEGORY_TYPES.find(c => c.value === type);
+        // Use a consistent color based on the category index, or fallback
+        const colorIdx = CATEGORY_TYPES.findIndex(c => c.value === type) % PALETTE.length;
+        return {
+          name: cat ? cat.label : type,
+          value,
+          color: PALETTE[colorIdx >= 0 ? colorIdx : 0],
+          pct: ((value / totalInvest) * 100).toFixed(1)
+        };
+      })
+      .sort((a, b) => b.value - a.value); // sort largest to smallest
+  })();
 
   const saveAsset = (asset) => {
     setAssets(prev => prev.find(a => a.id === asset.id) ? prev.map(a => a.id === asset.id ? asset : a) : [...prev, asset]);
@@ -429,7 +449,7 @@ export default function App() {
             {/* Pie + top performers */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
               <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 16 }}>
-                <p style={{ margin: "0 0 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Investments</p>
+                <p style={{ margin: "0 0 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Sectors / Diversification</p>
                 <ResponsiveContainer width="100%" height={160}>
                   <PieChart>
                     <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={2} dataKey="value">
