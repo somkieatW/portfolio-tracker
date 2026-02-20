@@ -3,7 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Only create Supabase client if URL and Key are provided
+export const supabase = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
 
 // Simple device fingerprint — no login required
 // Uses localStorage to persist a unique user ID per device
@@ -18,6 +21,12 @@ export function getDeviceId() {
 
 // Load portfolio data for this device
 export async function loadPortfolio(deviceId) {
+  // Fall back to localStorage if Supabase is not configured
+  if (!supabase) {
+    const localData = localStorage.getItem(`portfolio_data_${deviceId}`);
+    return localData ? JSON.parse(localData) : null;
+  }
+
   const { data, error } = await supabase
     .from('portfolio')
     .select('assets, settings')
@@ -30,6 +39,11 @@ export async function loadPortfolio(deviceId) {
 
 // Save (upsert) portfolio data for this device
 export async function savePortfolio(deviceId, assets, settings) {
+  // Always save locally as a backup / offline mode
+  localStorage.setItem(`portfolio_data_${deviceId}`, JSON.stringify({ assets, settings }));
+
+  if (!supabase) return true;
+
   const { error } = await supabase
     .from('portfolio')
     .upsert({
