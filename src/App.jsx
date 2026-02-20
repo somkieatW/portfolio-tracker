@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS = { dca: 1000, specCap: 10 };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
-const fmt = (n, d = 0) => Number(n).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmt = (n, d = 2) => Number(n).toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d });
 function calcPL(a) {
   if (a.isSpeculative || a.invested === 0) return { pl: a.currentValue - a.invested, plPct: 0 };
   const pl = a.currentValue - a.invested;
