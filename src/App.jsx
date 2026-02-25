@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { loadPortfolio, savePortfolio, getDeviceId, supabase } from "./supabase.js";
 import Auth from "./Auth.jsx";
+import { fetchAllFundNAVs } from "./finnomenaService.js";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -24,12 +25,17 @@ const CATEGORY_TYPES = [
   { value: "bond", label: "Bond / Fixed Income" },
   { value: "gold", label: "Gold / Commodity" },
   { value: "stock", label: "Individual Stock" },
+  { value: "thai_stocks", label: "Thai Individual Stocks" },
+  { value: "us_stocks", label: "US Individual Stocks" },
   { value: "forex", label: "Forex / Speculation" },
   { value: "crypto", label: "Crypto" },
   { value: "cash", label: "Cash / Savings" },
   { value: "property", label: "Property / REIT" },
   { value: "other", label: "Other" },
 ];
+
+// Stock group types — these act as containers for sub-assets
+const STOCK_GROUP_TYPES = new Set(["thai_stocks", "us_stocks"]);
 
 const DEFAULT_ASSETS = [];
 
@@ -44,6 +50,25 @@ function calcPL(a) {
   const plPct = (pl / a.invested) * 100;
   return { pl, plPct };
 }
+
+// For stock groups, compute invested/currentValue from sub-assets
+function groupTotals(asset) {
+  const subs = asset.subAssets || [];
+  return {
+    invested: subs.reduce((s, x) => s + (x.invested || 0), 0),
+    currentValue: subs.reduce((s, x) => s + (x.currentValue || 0), 0),
+  };
+}
+
+// Returns a flat view of assets with group totals computed (for charts/sums)
+function normalizeAssets(assets) {
+  return assets.map(a => {
+    if (!STOCK_GROUP_TYPES.has(a.type)) return a;
+    const { invested, currentValue } = groupTotals(a);
+    return { ...a, invested, currentValue };
+  });
+}
+
 
 // ─── SAVE INDICATOR ───────────────────────────────────────────────────────────
 function SaveBadge({ status }) {
@@ -92,13 +117,13 @@ const selectStyle = { ...inputStyle, cursor: "pointer" };
 
 // ─── ASSET FORM ───────────────────────────────────────────────────────────────
 function AssetForm({ initial, onSave, onClose }) {
-  const blank = { name: "", type: "equity", invested: "", currentValue: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false };
-  const [form, setForm] = useState(initial ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "" } : blank);
+  const blank = { name: "", type: "equity", invested: "", currentValue: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "" };
+  const [form, setForm] = useState(initial ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "", finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? "" } : blank);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter an asset name");
-    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0 });
+    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0, units: parseFloat(form.units) || 0, finnomenaCode: form.finnomenaCode.trim() });
   };
 
   return (
@@ -126,6 +151,19 @@ function AssetForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </Field>
+      {/* ── Finnomena auto-fetch fields ── */}
+      <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
+        <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔗 Finnomena Auto-Fetch (Optional)</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Fund Code" hint="e.g. K-US500X-A">
+            <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
+          </Field>
+          <Field label="Units Held" hint="Total units across all buys">
+            <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Current Value will be set to <strong style={{ color: T.muted }}>Units × NAV</strong> when you click "Fetch Fund Prices".</p>
+      </div>
       <Field label="Notes / Reminders">
         <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. Matures Sep 2026, DCA monthly..." />
       </Field>
@@ -177,16 +215,28 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
   const { pl, plPct } = calcPL(asset);
   const pct = ((asset.currentValue / total) * 100).toFixed(1);
   const isUp = pl >= 0;
+  const hasFinnomenaCode = !!asset.finnomenaCode?.trim();
+  const missingUnits = hasFinnomenaCode && !(asset.units > 0);
+  const avgCost = asset.units > 0 && asset.invested > 0 ? asset.invested / asset.units : null;
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ background: hovered ? T.cardHover : T.card, border: `1px solid ${hovered ? T.borderLight : T.border}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
             <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asset.name}</p>
             {asset.isSpeculative && <span style={{ background: "#f9731620", color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>SPEC</span>}
+            {hasFinnomenaCode && !missingUnits && <span style={{ background: "#3b82f615", color: T.accent, border: `1px solid ${T.accent}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>FNOMNA</span>}
+            {missingUnits && <span title="Add units to enable auto-fetch" style={{ background: "#f9731620", color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>⚠ Set units</span>}
           </div>
           <p style={{ margin: "0 0 2px", fontSize: 11, color: T.muted }}>{CATEGORY_TYPES.find(c => c.value === asset.type)?.label} · {pct}% of portfolio</p>
+          {hasFinnomenaCode && (
+            <p style={{ margin: "2px 0 0", fontSize: 10, color: T.dim }}>
+              {asset.finnomenaCode}{asset.units > 0 ? ` · ${fmt(asset.units, 4)} units` : ""}
+              {avgCost ? ` · avg ฿${fmt(avgCost, 4)}/unit` : ""}
+              {asset.navDate ? <span style={{ color: T.muted }}> · NAV {asset.navDate}</span> : null}
+            </p>
+          )}
           {asset.notes && <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{asset.notes}</p>}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -212,7 +262,144 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
   );
 }
 
-// ─── CUSTOM TOOLTIP ───────────────────────────────────────────────────────────
+// ─── STOCK SUB-ASSET FORM ─────────────────────────────────────────────────────
+function StockSubForm({ initial, onSave, onClose }) {
+  const blank = { name: "", invested: "", currentValue: "", notes: "" };
+  const [form, setForm] = useState(initial
+    ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "" }
+    : blank);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const pl = parseFloat(form.currentValue || 0) - parseFloat(form.invested || 0);
+  const plPct = parseFloat(form.invested) > 0 ? (pl / parseFloat(form.invested)) * 100 : 0;
+  const handleSave = () => {
+    if (!form.name.trim()) return alert("Please enter a stock name.");
+    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0 });
+  };
+  return (
+    <>
+      <Field label="Stock Name / Ticker">
+        <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. PTT, MSFT, AAPL" autoFocus />
+      </Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Invested (฿)" hint="Total cost basis">
+          <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Current Value (฿)">
+          <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
+        </Field>
+      </div>
+      {parseFloat(form.invested) > 0 && (
+        <div style={{ background: T.surface, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+          <p style={{ margin: 0, fontSize: 12, color: pl >= 0 ? T.green : T.red, fontWeight: 700 }}>
+            Preview: {pl >= 0 ? "+" : ""}{plPct.toFixed(2)}% &nbsp;
+            <span style={{ fontWeight: 400, color: T.muted }}>(฿{fmt(Math.abs(pl), 0)})</span>
+          </p>
+        </div>
+      )}
+      <Field label="Notes">
+        <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. 100 shares @ ฿30" />
+      </Field>
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 14 }}>Cancel</button>
+        <button onClick={handleSave} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>Save Stock</button>
+      </div>
+    </>
+  );
+}
+
+// ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue }) {
+  const [expanded, setExpanded] = useState(false);
+  const { invested, currentValue } = groupTotals(asset);
+  const pl = currentValue - invested;
+  const plPct = invested > 0 ? (pl / invested) * 100 : 0;
+  const pct = total > 0 ? ((currentValue / total) * 100).toFixed(1) : "0.0";
+  const isUp = pl >= 0;
+  const subs = asset.subAssets || [];
+  const catLabel = CATEGORY_TYPES.find(c => c.value === asset.type)?.label ?? asset.type;
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.borderLight}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+      {/* ── Group header (always visible) ── */}
+      <div style={{ padding: "14px 18px", cursor: "pointer" }} onClick={() => setExpanded(e => !e)}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+              <span style={{ fontSize: 12 }}>{expanded ? "▼" : "▶"}</span>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: T.text }}>{asset.name}</p>
+              <span style={{ background: `${asset.color}20`, color: asset.color, border: `1px solid ${asset.color}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                {subs.length} stock{subs.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: 11, color: T.muted }}>{catLabel} · {pct}% of portfolio</p>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: 16, color: T.text }}>฿{fmt(currentValue)}</p>
+            {invested > 0 && (
+              <p style={{ margin: "0 0 3px", fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 600 }}>
+                {isUp ? "▲" : "▼"} ฿{fmt(Math.abs(pl))} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(1)}%)
+              </p>
+            )}
+            <p style={{ margin: 0, fontSize: 11, color: T.muted }}>Cost: ฿{fmt(invested)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Expanded: individual stocks ── */}
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${T.border}`, background: "#090e1a" }}>
+          {subs.length === 0 && (
+            <p style={{ padding: "20px 18px", margin: 0, fontSize: 13, color: T.dim, textAlign: "center" }}>No stocks yet. Click "+ Add Stock" to get started.</p>
+          )}
+          {subs.map(sub => {
+            const spl = sub.currentValue - sub.invested;
+            const splPct = sub.invested > 0 ? (spl / sub.invested) * 100 : 0;
+            const sup = spl >= 0;
+            return (
+              <div key={sub.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 18px", borderBottom: `1px solid ${T.border}55` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.text }}>{sub.name}</p>
+                    {sub.notes && <span style={{ fontSize: 11, color: T.dim }}>· {sub.notes}</span>}
+                  </div>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>Cost: ฿{fmt(sub.invested)}</p>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: T.text }}>฿{fmt(sub.currentValue)}</p>
+                  {sub.invested > 0 && (
+                    <p style={{ margin: 0, fontSize: 11, color: sup ? T.green : T.red, fontWeight: 600 }}>
+                      {sup ? "+" : ""}{splPct.toFixed(1)}%
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => onUpdateSubValue(sub)} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
+                  <button onClick={() => onEditSub(sub)} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
+                  <button onClick={() => onDeleteSub(sub.id)} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* ── Footer actions ── */}
+          <div style={{ display: "flex", gap: 8, padding: "10px 18px" }}>
+            <button onClick={onAddSub} style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${asset.color}55`, background: `${asset.color}15`, color: asset.color, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+              + Add Stock
+            </button>
+            <button onClick={onEdit} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+              ✏️ Edit Group
+            </button>
+            <button onClick={onDelete} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+              🗑 Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function CustomTip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
@@ -236,6 +423,13 @@ export default function App() {
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
+  const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [fetchToast, setFetchToast] = useState(null); // { type: 'success'|'warn'|'error', msg: string }
+  // Sub-asset modal state (for stock groups)
+  const [subModal, setSubModal] = useState(null); // 'add' | 'edit' | 'update'
+  const [activeGroupId, setActiveGroupId] = useState(null);
+  const [editingSubAsset, setEditingSubAsset] = useState(null);
+
 
   // ── Auth Listener ──
   useEffect(() => {
@@ -287,8 +481,10 @@ export default function App() {
   }, [assets, settings, loadStatus, userId]);
 
   // ── Computed ──
-  const investments = assets.filter(a => !a.isSpeculative);
-  const speculative = assets.filter(a => a.isSpeculative);
+  // normalizedAssets: group assets have invested/currentValue computed from subAssets
+  const normalizedAssets = normalizeAssets(assets);
+  const investments = normalizedAssets.filter(a => !a.isSpeculative);
+  const speculative = normalizedAssets.filter(a => a.isSpeculative);
   const totalInvest = investments.reduce((s, a) => s + a.currentValue, 0);
   const totalInvested = investments.reduce((s, a) => s + a.invested, 0);
   const totalSpec = speculative.reduce((s, a) => s + a.currentValue, 0);
@@ -300,6 +496,7 @@ export default function App() {
   const specPct = grandTotal > 0 ? (totalSpec / grandTotal) * 100 : 0;
   const specCap = grandTotal * (settings.specCap / 100);
   const specOver = totalSpec - specCap;
+
 
   const projection = (() => {
     let bal = totalInvest;
@@ -345,7 +542,66 @@ export default function App() {
     setModal(null); setEditingAsset(null);
   };
 
+  const handleFetchPrices = async () => {
+    setFetchingPrices(true);
+    setFetchToast(null);
+    try {
+      const navMap = await fetchAllFundNAVs(assets);
+      if (navMap.size === 0) {
+        setFetchToast({ type: "warn", msg: "No funds matched. Check the Finnomena Code on your assets." });
+      } else {
+        // Count assets that have units AND matched NAV (will actually update currentValue)
+        const updatedCount = [...navMap.keys()].filter(id => {
+          const a = assets.find(x => x.id === id);
+          return a && a.units > 0;
+        }).length;
+        setAssets(prev => prev.map(a => {
+          const nav = navMap.get(a.id);
+          if (!nav) return a;
+          const newValue = a.units > 0 ? +(a.units * nav.nav).toFixed(2) : a.currentValue;
+          return { ...a, currentValue: newValue, navDate: nav.date };
+        }));
+        const date = [...navMap.values()][0]?.date ?? "";
+        setFetchToast({ type: "success", msg: `✓ Updated ${updatedCount} fund${updatedCount !== 1 ? "s" : ""} · NAV date: ${date}` });
+      }
+    } catch (err) {
+      console.error("[Finnomena] Fetch error:", err);
+      setFetchToast({ type: "error", msg: "Failed to fetch prices. Check your connection." });
+    } finally {
+      setFetchingPrices(false);
+      setTimeout(() => setFetchToast(null), 6000);
+    }
+  };
+
   const updateSettings = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
+
+  // ── Sub-asset handlers (for stock groups) ──
+  const closeSub = () => { setSubModal(null); setActiveGroupId(null); setEditingSubAsset(null); };
+
+  const saveSubAsset = (sub) => {
+    setAssets(prev => prev.map(a => {
+      if (a.id !== activeGroupId) return a;
+      const existing = (a.subAssets || []).find(s => s.id === sub.id);
+      const subAssets = existing
+        ? (a.subAssets || []).map(s => s.id === sub.id ? sub : s)
+        : [...(a.subAssets || []), sub];
+      return { ...a, subAssets };
+    }));
+    closeSub();
+  };
+
+  const deleteSubAsset = (groupId, subId) => {
+    if (!window.confirm("Delete this stock?")) return;
+    setAssets(prev => prev.map(a => a.id !== groupId ? a : { ...a, subAssets: (a.subAssets || []).filter(s => s.id !== subId) }));
+  };
+
+  const updateSubValue = (groupId, subId, val) => {
+    setAssets(prev => prev.map(a => a.id !== groupId ? a : {
+      ...a, subAssets: (a.subAssets || []).map(s => s.id === subId ? { ...s, currentValue: val } : s)
+    }));
+    closeSub();
+  };
+
 
   const TABS = [
     { id: "dashboard", label: "Dashboard" },
@@ -499,17 +755,44 @@ export default function App() {
         {/* ASSETS */}
         {tab === "assets" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{investments.length} Investment Assets · ฿{fmt(totalInvest)}</p>
-              <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: fetchToast ? 8 : 16, flexWrap: "wrap", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{investments.length} Investment Assets</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleFetchPrices}
+                  disabled={fetchingPrices}
+                  style={{ background: fetchingPrices ? "transparent" : "#3b82f610", border: `1px solid ${T.accent}55`, borderRadius: 8, color: fetchingPrices ? T.dim : T.accent, padding: "7px 14px", cursor: fetchingPrices ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+                  {fetchingPrices
+                    ? <><span style={{ display: "inline-block", width: 10, height: 10, border: `2px solid ${T.accent}44`, borderTop: `2px solid ${T.accent}`, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Fetching…</>
+                    : "🔄 Fetch Fund Prices"}
+                </button>
+                <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
+              </div>
             </div>
+            {fetchToast && (
+              <div style={{ background: fetchToast.type === "success" ? "#10231600" : fetchToast.type === "warn" ? "#2a1f0090" : "#2a0a0a90", border: `1px solid ${fetchToast.type === "success" ? T.green : fetchToast.type === "warn" ? T.yellow : T.red}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: fetchToast.type === "success" ? T.green : fetchToast.type === "warn" ? T.yellow : T.red, fontWeight: 600 }}>
+                {fetchToast.msg}
+              </div>
+            )}
             {investments.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
                 <p style={{ fontSize: 40, marginBottom: 12 }}>📊</p>
                 <p>No investment assets yet. Add your first one!</p>
               </div>
             )}
-            {investments.map(a => (
+            {investments.map(a => STOCK_GROUP_TYPES.has(a.type) ? (
+              <StockGroupCard
+                key={a.id}
+                asset={a}
+                total={totalInvest}
+                onEdit={() => { setEditingAsset(a); setModal("edit"); }}
+                onDelete={() => deleteAsset(a.id)}
+                onAddSub={() => { setActiveGroupId(a.id); setEditingSubAsset(null); setSubModal("add"); }}
+                onEditSub={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("edit"); }}
+                onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
+                onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
+              />
+            ) : (
               <AssetCard key={a.id} asset={a} total={totalInvest}
                 onEdit={() => { setEditingAsset(a); setModal("edit"); }}
                 onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
@@ -682,6 +965,25 @@ export default function App() {
       )}
       {modal === "update" && editingAsset && (
         <UpdateValueModal asset={editingAsset} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
+      )}
+
+      {/* ── SUB-ASSET MODALS (for stock groups) ── */}
+      {subModal === "add" && (
+        <Modal title="Add Stock to Group" onClose={closeSub}>
+          <StockSubForm onSave={saveSubAsset} onClose={closeSub} />
+        </Modal>
+      )}
+      {subModal === "edit" && editingSubAsset && (
+        <Modal title={`Edit — ${editingSubAsset.name}`} onClose={closeSub}>
+          <StockSubForm initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} />
+        </Modal>
+      )}
+      {subModal === "update" && editingSubAsset && (
+        <UpdateValueModal
+          asset={editingSubAsset}
+          onSave={(v) => updateSubValue(activeGroupId, editingSubAsset.id, v)}
+          onClose={closeSub}
+        />
       )}
     </div>
   );
