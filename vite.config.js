@@ -12,6 +12,12 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/finnomena-api/, ''),
         secure: true,
       },
+      '/yahoo-api': {
+        target: 'https://query1.finance.yahoo.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/yahoo-api/, ''),
+        secure: true,
+      },
     },
   },
 })

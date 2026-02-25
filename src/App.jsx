@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAx
 import { loadPortfolio, savePortfolio, getDeviceId, supabase } from "./supabase.js";
 import Auth from "./Auth.jsx";
 import { fetchAllFundNAVs } from "./finnomenaService.js";
+import { fetchSubAssetPrices } from "./yahooFinanceService.js";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -264,21 +265,21 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
 
 // ─── STOCK SUB-ASSET FORM ─────────────────────────────────────────────────────
 function StockSubForm({ initial, onSave, onClose }) {
-  const blank = { name: "", invested: "", currentValue: "", notes: "" };
+  const blank = { name: "", invested: "", currentValue: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
   const [form, setForm] = useState(initial
-    ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "" }
+    ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "", yahooSymbol: initial.yahooSymbol ?? "", qty: initial.qty ?? "", currency: initial.currency ?? "THB" }
     : blank);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const pl = parseFloat(form.currentValue || 0) - parseFloat(form.invested || 0);
   const plPct = parseFloat(form.invested) > 0 ? (pl / parseFloat(form.invested)) * 100 : 0;
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter a stock name.");
-    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0 });
+    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0, qty: parseFloat(form.qty) || 0, yahooSymbol: form.yahooSymbol.trim() });
   };
   return (
     <>
       <Field label="Stock Name / Ticker">
-        <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. PTT, MSFT, AAPL" autoFocus />
+        <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. PTT, MSFT" autoFocus />
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Invested (฿)" hint="Total cost basis">
@@ -297,9 +298,30 @@ function StockSubForm({ initial, onSave, onClose }) {
         </div>
       )}
       <Field label="Notes">
-        <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. 100 shares @ ฿30" />
+        <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. 8 shares @ ฿35.81" />
       </Field>
-      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+
+      {/* ── Yahoo Finance auto-fetch ── */}
+      <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "12px 14px 10px", marginBottom: 16 }}>
+        <p style={{ margin: "0 0 8px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔄 Yahoo Finance Auto-Fetch (Optional)</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 10 }}>
+          <Field label="Qty / Shares" hint="Number of shares held">
+            <input style={inputStyle} type="number" value={form.qty} onChange={e => set("qty", e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="Yahoo Symbol" hint="e.g. PTT.BK or LRCX">
+            <input style={inputStyle} value={form.yahooSymbol} onChange={e => set("yahooSymbol", e.target.value)} placeholder="PTT.BK" />
+          </Field>
+          <Field label="Currency">
+            <select style={{ ...inputStyle, cursor: "pointer" }} value={form.currency} onChange={e => set("currency", e.target.value)}>
+              <option value="THB">THB ฿</option>
+              <option value="USD">USD $</option>
+            </select>
+          </Field>
+        </div>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Value auto-updates to <strong style={{ color: T.muted }}>Qty × Live Price</strong> {form.currency === "USD" ? "× USD/THB rate" : ""} when you click "Fetch Stock Prices".</p>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
         <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 14 }}>Cancel</button>
         <button onClick={handleSave} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>Save Stock</button>
       </div>
@@ -308,7 +330,7 @@ function StockSubForm({ initial, onSave, onClose }) {
 }
 
 // ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
-function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue }) {
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, onFetchPrices, fetchingPrices }) {
   const [expanded, setExpanded] = useState(false);
   const { invested, currentValue } = groupTotals(asset);
   const pl = currentValue - invested;
@@ -371,6 +393,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                       {sup ? "+" : ""}{splPct.toFixed(1)}%
                     </p>
                   )}
+                  {sub.priceDate && <p style={{ margin: 0, fontSize: 10, color: T.dim }}>{sub.priceDate}</p>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                   <button onClick={() => onUpdateSubValue(sub)} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
@@ -386,12 +409,21 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
             <button onClick={onAddSub} style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${asset.color}55`, background: `${asset.color}15`, color: asset.color, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
               + Add Stock
             </button>
+            <button
+              onClick={onFetchPrices}
+              disabled={fetchingPrices}
+              style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.green}55`, background: fetchingPrices ? "transparent" : `${T.green}15`, color: fetchingPrices ? T.dim : T.green, cursor: fetchingPrices ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              {fetchingPrices
+                ? <><span style={{ display: "inline-block", width: 8, height: 8, border: `2px solid ${T.green}44`, borderTop: `2px solid ${T.green}`, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Fetching…</>
+                : "🔄 Fetch Prices"}
+            </button>
             <button onClick={onEdit} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              ✏️ Edit Group
+              ✏️
             </button>
             <button onClick={onDelete} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              🗑 Delete
+              🗑
             </button>
+
           </div>
         </div>
       )}
@@ -425,6 +457,7 @@ export default function App() {
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const [fetchToast, setFetchToast] = useState(null); // { type: 'success'|'warn'|'error', msg: string }
+  const [fetchingStockGroupId, setFetchingStockGroupId] = useState(null); // id of group currently fetching
   // Sub-asset modal state (for stock groups)
   const [subModal, setSubModal] = useState(null); // 'add' | 'edit' | 'update'
   const [activeGroupId, setActiveGroupId] = useState(null);
@@ -602,6 +635,35 @@ export default function App() {
     closeSub();
   };
 
+  const handleFetchGroupPrices = async (groupId) => {
+    const group = assets.find(a => a.id === groupId);
+    if (!group) return;
+    setFetchingStockGroupId(groupId);
+    try {
+      const priceMap = await fetchSubAssetPrices(group.subAssets || []);
+      if (priceMap.size === 0) {
+        alert("No stocks with Yahoo Symbol + Qty found. Edit your stocks to add them.");
+        return;
+      }
+      setAssets(prev => prev.map(a => {
+        if (a.id !== groupId) return a;
+        return {
+          ...a,
+          subAssets: (a.subAssets || []).map(s => {
+            const upd = priceMap.get(s.id);
+            if (!upd) return s;
+            return { ...s, currentValue: upd.newValue, priceDate: upd.date };
+          }),
+        };
+      }));
+    } catch (err) {
+      console.error("[Yahoo] Group fetch error:", err);
+      alert("Failed to fetch stock prices. Check your connection.");
+    } finally {
+      setFetchingStockGroupId(null);
+    }
+  };
+
 
   const TABS = [
     { id: "dashboard", label: "Dashboard" },
@@ -698,7 +760,7 @@ export default function App() {
                 ))}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
-                {assets.map(a => (
+                {[...normalizedAssets].sort((a, b) => b.currentValue - a.currentValue).map(a => (
                   <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.color, opacity: a.isSpeculative ? 0.6 : 1 }} />
                     <span style={{ fontSize: 10, color: T.muted }}>{a.name.split(" (")[0].split(" ").slice(0, 2).join(" ")} {((a.currentValue / grandTotal) * 100).toFixed(0)}%</span>
@@ -740,8 +802,8 @@ export default function App() {
             {/* Quick update */}
             <p style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 12px" }}>Quick Update Values</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-              {assets.map(a => (
-                <div key={a.id} onClick={() => { setEditingAsset(a); setModal("update"); }}
+              {[...normalizedAssets].sort((a, b) => b.currentValue - a.currentValue).map(a => (
+                <div key={a.id} onClick={() => { setEditingAsset(assets.find(x => x.id === a.id)); setModal("update"); }}
                   style={{ background: T.card, border: `1px solid ${T.border}`, borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}>
                   <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name.split(" (")[0]}</p>
                   <p style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: a.color }}>฿{fmt(a.currentValue)}</p>
@@ -791,6 +853,8 @@ export default function App() {
                 onEditSub={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("edit"); }}
                 onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
                 onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
+                onFetchPrices={() => handleFetchGroupPrices(a.id)}
+                fetchingPrices={fetchingStockGroupId === a.id}
               />
             ) : (
               <AssetCard key={a.id} asset={a} total={totalInvest}
