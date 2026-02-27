@@ -129,7 +129,7 @@ function Field({ label, hint, children }) {
   );
 }
 
-const inputStyle = { width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.text, fontSize: 14, padding: "10px 12px", fontFamily: "inherit", outline: "none" };
+const inputStyle = { width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.text, fontSize: 16, padding: "10px 12px", fontFamily: "inherit", outline: "none" };
 const selectStyle = { ...inputStyle, cursor: "pointer" };
 
 // ─── ASSET FORM ───────────────────────────────────────────────────────────────
