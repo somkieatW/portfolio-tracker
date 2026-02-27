@@ -168,16 +168,16 @@ function AssetForm({ initial, onSave, onClose }) {
       {/* Finnomena section — only for non-stock-group assets */}
       {!isStockGroup && (
         <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
-          <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔗 Finnomena Auto-Fetch (Optional)</p>
+          <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>� Auto Price Update (Optional)</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Fund Code" hint="e.g. K-US500X-A">
+            <Field label="Fund Code / Ticker" hint="e.g. K-US500X-A">
               <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
             </Field>
             <Field label="Units Held" hint="Total units across all buys">
               <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0" />
             </Field>
           </div>
-          <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Current Value = <strong style={{ color: T.muted }}>Units × NAV</strong> — updated automatically every 6 hours via the cache.</p>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>If set, <strong style={{ color: T.muted }}>Current Value</strong> will be automatically updated to reflect the real market price every 6 hours.</p>
         </div>
       )}
       <Field label="Notes / Reminders">
@@ -317,15 +317,15 @@ function StockSubForm({ initial, onSave, onClose }) {
         <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. 8 shares @ ฿35.81" />
       </Field>
 
-      {/* ── Yahoo Finance auto-fetch ── */}
+      {/* ── Auto price section ── */}
       <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "12px 14px 10px", marginBottom: 16 }}>
-        <p style={{ margin: "0 0 8px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔄 Yahoo Finance Auto-Fetch (Optional)</p>
+        <p style={{ margin: "0 0 8px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>� Auto Price Update (Optional)</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 10 }}>
           <Field label="Qty / Shares" hint="Number of shares held">
             <input style={inputStyle} type="number" value={form.qty} onChange={e => set("qty", e.target.value)} placeholder="0" />
           </Field>
-          <Field label="Yahoo Symbol" hint="e.g. PTT.BK or LRCX">
-            <input style={inputStyle} value={form.yahooSymbol} onChange={e => set("yahooSymbol", e.target.value)} placeholder="PTT.BK" />
+          <Field label="Stock Symbol" hint="e.g. PTT.BK or LRCX">
+            <input style={inputStyle} value={form.yahooSymbol} onChange={e => set("yahooSymbol", e.target.value)} placeholder="e.g. PTT.BK" />
           </Field>
           <Field label="Currency">
             <select style={{ ...inputStyle, cursor: "pointer" }} value={form.currency} onChange={e => set("currency", e.target.value)}>
@@ -334,7 +334,7 @@ function StockSubForm({ initial, onSave, onClose }) {
             </select>
           </Field>
         </div>
-        <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Value auto-updates to <strong style={{ color: T.muted }}>Qty × Live Price</strong> {form.currency === "USD" ? "× USD/THB rate" : ""} when you click "Fetch Stock Prices".</p>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>If set, <strong style={{ color: T.muted }}>Current Value</strong> will be automatically updated to reflect the real market price every 6 hours.</p>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -409,7 +409,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                       {sup ? "+" : ""}{splPct.toFixed(1)}%
                     </p>
                   )}
-                  {sub.priceDate && <p style={{ margin: 0, fontSize: 10, color: T.dim }}>{sub.priceDate}</p>}
+                  {fmtTs(sub.priceUpdatedAt) && <p style={{ margin: 0, fontSize: 10, color: T.dim }}>🕐 {fmtTs(sub.priceUpdatedAt)}</p>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                   <button onClick={() => onUpdateSubValue(sub)} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
