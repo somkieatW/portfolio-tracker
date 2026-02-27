@@ -459,7 +459,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
   const usdCost = isUSD && asset.investedUSD ? fmt(asset.investedUSD, 2) : null;
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? T.cardHover : T.card, border: `1px solid ${hovered ? T.borderLight : T.border}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10 }}>
+      style={{ background: hovered ? T.cardHover : T.card, borderTop: `1px solid ${hovered ? T.borderLight : T.border}`, borderRight: `1px solid ${hovered ? T.borderLight : T.border}`, borderBottom: `1px solid ${hovered ? T.borderLight : T.border}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10 }}>
       {/* ── Drag Handle & Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div data-drag-handle title="Drag to reorder" style={{ cursor: "grab", color: T.dim, padding: "2px 4px 2px 0", marginTop: 2 }}>
@@ -664,7 +664,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
   const catLabel = CATEGORY_TYPES.find(c => c.value === asset.type)?.label ?? asset.type;
 
   return (
-    <div style={{ background: T.card, border: `1px solid ${T.borderLight}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+    <div style={{ background: T.card, borderTop: `1px solid ${T.borderLight}`, borderRight: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.borderLight}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
       {/* ── Group header (always visible) ── */}
       <div style={{ padding: "14px 18px", cursor: "pointer" }} onClick={(e) => { if (!e.target.closest('[data-drag-handle]')) setExpanded(exp => !exp); }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
