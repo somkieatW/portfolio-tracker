@@ -281,24 +281,38 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
 
 // ─── STOCK SUB-ASSET FORM ─────────────────────────────────────────────────────
 function StockSubForm({ initial, onSave, onClose, usdThbRate }) {
-  const blank = { name: "", invested: "", investedUSD: "", currentValue: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
-  const [form, setForm] = useState(initial
-    ? { ...initial, invested: initial.invested ?? "", investedUSD: initial.investedUSD ?? "", currentValue: initial.currentValue ?? "", yahooSymbol: initial.yahooSymbol ?? "", qty: initial.qty ?? "", currency: initial.currency ?? "THB" }
-    : blank);
+  const blank = { name: "", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
+  const rate = usdThbRate || 35;
+  const [form, setForm] = useState(() => {
+    if (!initial) return blank;
+    const isUSD = (initial.currency ?? "THB") === "USD";
+    return {
+      ...initial,
+      invested: initial.invested ?? "",
+      investedUSD: initial.investedUSD ?? "",
+      currentValue: initial.currentValue ?? "",
+      // Back-calculate USD display from stored THB value
+      currentValueUSD: isUSD && initial.currentValue ? +((initial.currentValue / rate)).toFixed(2) : "",
+      yahooSymbol: initial.yahooSymbol ?? "",
+      qty: initial.qty ?? "",
+      currency: initial.currency ?? "THB",
+    };
+  });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const isUSD = form.currency === "USD";
-  const rate = usdThbRate || 35;
 
-  // For P&L preview: if USD, invested display is in $, internally stored as THB
+  // Always work in THB internally for P&L
   const investedThb = isUSD ? (parseFloat(form.investedUSD || 0) * rate) : parseFloat(form.invested || 0);
-  const pl = parseFloat(form.currentValue || 0) - investedThb;
+  const currentThb = isUSD ? (parseFloat(form.currentValueUSD || 0) * rate) : parseFloat(form.currentValue || 0);
+  const pl = currentThb - investedThb;
   const plPct = investedThb > 0 ? (pl / investedThb) * 100 : 0;
 
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter a stock name.");
     const investedFinal = isUSD ? +(parseFloat(form.investedUSD || 0) * rate).toFixed(2) : parseFloat(form.invested) || 0;
+    const currentValueFinal = isUSD ? +(parseFloat(form.currentValueUSD || 0) * rate).toFixed(2) : parseFloat(form.currentValue) || 0;
     const investedUSD = isUSD ? parseFloat(form.investedUSD) || 0 : null;
-    onSave({ ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: parseFloat(form.currentValue) || 0, qty: parseFloat(form.qty) || 0, yahooSymbol: form.yahooSymbol.trim() });
+    onSave({ ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: currentValueFinal, qty: parseFloat(form.qty) || 0, yahooSymbol: form.yahooSymbol.trim() });
   };
   return (
     <>
@@ -315,12 +329,23 @@ function StockSubForm({ initial, onSave, onClose, usdThbRate }) {
             <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
           </Field>
         )}
-        <Field label="Current Value (฿)">
-          <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
-        </Field>
+        {isUSD ? (
+          <Field label="Current Value ($)">
+            <input style={inputStyle} type="number" value={form.currentValueUSD} onChange={e => set("currentValueUSD", e.target.value)} placeholder="0" />
+          </Field>
+        ) : (
+          <Field label="Current Value (฿)">
+            <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
+          </Field>
+        )}
       </div>
-      {isUSD && parseFloat(form.investedUSD) > 0 && (
-        <p style={{ margin: "-8px 0 12px", fontSize: 11, color: T.dim }}>= ฿{fmt(parseFloat(form.investedUSD) * rate, 2)} at current rate (฿{fmt(rate, 2)}/$)</p>
+      {isUSD && (parseFloat(form.investedUSD) > 0 || parseFloat(form.currentValueUSD) > 0) && (
+        <p style={{ margin: "-8px 0 12px", fontSize: 11, color: T.dim }}>
+          {parseFloat(form.investedUSD) > 0 && <>Cost ฿{fmt(parseFloat(form.investedUSD) * rate, 2)}</>}
+          {parseFloat(form.investedUSD) > 0 && parseFloat(form.currentValueUSD) > 0 && <span style={{ color: T.border }}> · </span>}
+          {parseFloat(form.currentValueUSD) > 0 && <>Value ฿{fmt(parseFloat(form.currentValueUSD) * rate, 2)}</>}
+          <span style={{ color: T.dim }}> &nbsp;·&nbsp; rate ฿{fmt(rate, 2)}/$</span>
+        </p>
       )}
       {investedThb > 0 && (
         <div style={{ background: T.surface, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
