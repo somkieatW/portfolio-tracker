@@ -88,3 +88,44 @@ export function isCacheStale(updatedAt, thresholdHours = 18) {
   const ageMs = Date.now() - new Date(updatedAt).getTime();
   return ageMs > thresholdHours * 60 * 60 * 1000;
 }
+
+// ─── Transaction Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Load all transactions for a user, newest first.
+ * Optionally filter to a single assetId.
+ */
+export async function getTransactions(userId, assetId = null) {
+  if (!supabase || !userId) return [];
+  let q = supabase.from('transactions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (assetId) q = q.eq('asset_id', assetId);
+  const { data, error } = await q;
+  if (error) { console.warn('[Transactions] load error:', error.message); return []; }
+  return data || [];
+}
+
+/**
+ * Insert a single transaction row.
+ * @param {object} tx - transaction object matching the table schema
+ */
+export async function addTransaction(tx) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('transactions').insert(tx).select().single();
+  if (error) { console.error('[Transactions] insert error:', error.message); return null; }
+  return data;
+}
+
+/**
+ * Delete a transaction by id.
+ */
+export async function deleteTransaction(id) {
+  if (!supabase) return false;
+  const { error } = await supabase.from('transactions').delete().eq('id', id);
+  if (error) { console.warn('[Transactions] delete error:', error.message); return false; }
+  return true;
+}
+
