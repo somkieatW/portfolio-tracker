@@ -677,36 +677,6 @@ export default function App() {
     closeSub();
   };
 
-  const handleFetchGroupPrices = async (groupId) => {
-    const group = assets.find(a => a.id === groupId);
-    if (!group) return;
-    setFetchingStockGroupId(groupId);
-    try {
-      const priceMap = await fetchSubAssetPrices(group.subAssets || []);
-      if (priceMap.size === 0) {
-        alert("No stocks with Yahoo Symbol + Qty found. Edit your stocks to add them.");
-        return;
-      }
-      setAssets(prev => prev.map(a => {
-        if (a.id !== groupId) return a;
-        return {
-          ...a,
-          subAssets: (a.subAssets || []).map(s => {
-            const upd = priceMap.get(s.id);
-            if (!upd) return s;
-            return { ...s, currentValue: upd.newValue, priceDate: upd.date };
-          }),
-        };
-      }));
-    } catch (err) {
-      console.error("[Yahoo] Group fetch error:", err);
-      alert("Failed to fetch stock prices. Check your connection.");
-    } finally {
-      setFetchingStockGroupId(null);
-    }
-  };
-
-
   const TABS = [
     { id: "dashboard", label: "Dashboard" },
     { id: "assets", label: "Assets" },
