@@ -725,6 +725,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                     <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>
                       {sub.currency === "USD" && sub.investedUSD > 0 ? `Cost: $${fmt(sub.investedUSD, 2)} (฿${fmt(sub.invested)})` : `Cost: ฿${fmt(sub.invested)}`}
                     </p>
+                    {fmtTs(sub.priceUpdatedAt) && <p style={{ margin: "2px 0 0", fontSize: 10, color: T.dim }}>🕐 {fmtTs(sub.priceUpdatedAt)}</p>}
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
                     {sub.currency === "USD" && usdThbRate ? (
@@ -740,7 +741,6 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                         {sup ? "+" : ""}{splPct.toFixed(2)}%
                       </p>
                     )}
-                    {fmtTs(sub.priceUpdatedAt) && <p style={{ margin: 0, fontSize: 10, color: T.dim }}>🕐 {fmtTs(sub.priceUpdatedAt)}</p>}
                   </div>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap", width: 80, justifyContent: "flex-end", alignContent: "flex-start" }}>
                     <button onClick={() => onAddInvSub(sub)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>+ Invst</button>
