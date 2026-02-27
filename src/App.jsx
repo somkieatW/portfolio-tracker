@@ -366,46 +366,49 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
   );
 }
 
-// ─── TRANSACTION HISTORY DRAWER ───────────────────────────────────────────────
-function TransactionHistory({ transactions, onDelete, isUSD }) {
-  if (!transactions?.length) return (
-    <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, marginTop: 12, fontSize: 12, color: T.muted, textAlign: "center" }}>
-      No transactions recorded yet.
-    </div>
-  );
-
+// ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
+function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, isUSD }) {
+  const name = subAsset ? subAsset.name : asset.name;
   return (
-    <div style={{ marginTop: 12, background: "rgba(0,0,0,0.2)", borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "8px 12px", background: T.surface, fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border}` }}>
-        <div>DATE</div>
-        <div>TYPE</div>
-        <div style={{ textAlign: "right" }}>AMOUNT</div>
-        <div style={{ textAlign: "right" }}>UNITS/QTY</div>
-        <div></div>
-      </div>
-      <div style={{ maxHeight: 250, overflowY: "auto" }}>
-        {transactions.map(tx => {
-          const isSell = tx.type === 'sell';
-          const amt = isUSD ? tx.amount_usd : tx.amount_thb;
-          const color = isSell ? T.orange : (tx.type === 'dividend' ? T.green : T.text);
-          return (
-            <div key={tx.id} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "10px 12px", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}55`, alignItems: "center" }}>
-              <div style={{ color: T.dim }}>{new Date(tx.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</div>
-              <div style={{ textTransform: "capitalize", color }}>{tx.type}</div>
-              <div style={{ textAlign: "right", color }}>
-                {isUSD ? '$' : '฿'}{fmt(Math.abs(amt || 0), 2)}
-              </div>
-              <div style={{ textAlign: "right", color: T.muted }}>
-                {tx.units ? fmt(Math.abs(tx.units), 4) : tx.qty ? fmt(Math.abs(tx.qty), 4) : '-'}
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <button onClick={() => { if (window.confirm("Delete transaction?")) onDelete(tx.id); }} style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", opacity: 0.5 }} title="Delete">✕</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <Modal title={`History — ${name}`} onClose={onClose}>
+      {!transactions?.length ? (
+        <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 12, color: T.muted, textAlign: "center" }}>
+          No transactions recorded yet.
+        </div>
+      ) : (
+        <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "8px 12px", background: T.surface, fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border}` }}>
+            <div>DATE</div>
+            <div>TYPE</div>
+            <div style={{ textAlign: "right" }}>AMOUNT</div>
+            <div style={{ textAlign: "right" }}>UNITS/QTY</div>
+            <div></div>
+          </div>
+          <div style={{ maxHeight: 250, overflowY: "auto" }}>
+            {transactions.map(tx => {
+              const isSell = tx.type === 'sell';
+              const amt = isUSD ? tx.amount_usd : tx.amount_thb;
+              const color = isSell ? T.orange : (tx.type === 'dividend' ? T.green : T.text);
+              return (
+                <div key={tx.id} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "10px 12px", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}55`, alignItems: "center" }}>
+                  <div style={{ color: T.dim }}>{new Date(tx.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</div>
+                  <div style={{ textTransform: "capitalize", color }}>{tx.type}</div>
+                  <div style={{ textAlign: "right", color }}>
+                    {isUSD ? '$' : '฿'}{fmt(Math.abs(amt || 0), 2)}
+                  </div>
+                  <div style={{ textAlign: "right", color: T.muted }}>
+                    {tx.units ? fmt(Math.abs(tx.units), 4) : tx.qty ? fmt(Math.abs(tx.qty), 4) : '-'}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <button onClick={() => { if (window.confirm("Delete transaction?")) onDelete(tx.id); }} style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", opacity: 0.5 }} title="Delete">✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -442,9 +445,8 @@ function UpdateValueModal({ asset, onSave, onClose, usdThbRate }) {
 }
 
 // ─── ASSET CARD ───────────────────────────────────────────────────────────────
-function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestment, transactions, onDeleteTx, usdThbRate }) {
+function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestment, onShowHistory, transactions, onDeleteTx, usdThbRate }) {
   const [hovered, setHovered] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const { pl, plPct } = calcPL(asset);
   const pct = ((asset.currentValue / total) * 100).toFixed(1);
   const isUp = pl >= 0;
@@ -508,15 +510,12 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
           { label: "💰 + Invst", onClick: onAddInvestment, color: T.green },
           { label: "📉 Price", onClick: onUpdateValue, color: T.accent },
           { label: "✏️ Edit", onClick: onEdit, color: T.accentGlow.replace('20', 'aa') },
-          { label: showHistory ? "▲ Hide Transactions" : `▼ Show Transactions`, onClick: () => setShowHistory(!showHistory), color: T.text },
+          { label: `📜 History (${transactions?.length || 0})`, onClick: onShowHistory, color: T.text },
           { label: "🗑", onClick: onDelete, color: T.red },
         ].map(btn => (
           <button key={btn.label} onClick={btn.onClick} style={{ flex: btn.label === "🗑" ? 0 : 1, minWidth: btn.label === "🗑" ? 36 : 0, padding: "7px 0", borderRadius: 8, border: `1px solid ${btn.color}44`, background: `${btn.color}11`, color: btn.color, cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>{btn.label}</button>
         ))}
       </div>
-      {showHistory && (
-        <TransactionHistory transactions={transactions} onDelete={onDeleteTx} isUSD={isUSD} />
-      )}
     </div>
   );
 }
@@ -654,9 +653,8 @@ function StockSubForm({ initial, onSave, onClose, usdThbRate, hasTransactions })
 }
 
 // ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
-function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, onAddInvSub, transactions, onDeleteTx, usdThbRate }) {
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, onAddInvSub, onShowHistorySub, transactions, onDeleteTx, usdThbRate }) {
   const [expanded, setExpanded] = useState(false);
-  const [historyId, setHistoryId] = useState(null);
   const { invested, currentValue } = groupTotals(asset);
   const pl = currentValue - invested;
   const plPct = invested > 0 ? (pl / invested) * 100 : 0;
@@ -740,7 +738,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                   <div style={{ display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap", width: 80, justifyContent: "flex-end", alignContent: "flex-start" }}>
                     <button onClick={() => onAddInvSub(sub)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>+ Invst</button>
                     <button onClick={() => setHistoryId(historyId === sub.id ? null : sub.id)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>
-                      {historyId === sub.id ? "▲ Hide Txs" : "▼ Show Txs"}
+                      {historyId === sub.id ? "▲ Hide Transactions" : "▼ Show Transactions"}
                     </button>
                     <button onClick={() => onUpdateSubValue(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
                     <button onClick={() => onEditSub(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
@@ -811,6 +809,7 @@ export default function App() {
   // Transactions state
   const [transactions, setTransactions] = useState([]);
   const [txModal, setTxModal] = useState(null); // { type: 'asset' | 'sub', assetId, subId? }
+  const [historyModal, setHistoryModal] = useState(null); // { asset, subAsset, isUSD }
 
   // ── Auth Listener ──
   useEffect(() => {
@@ -1325,7 +1324,8 @@ export default function App() {
               const dragHandlers = {
                 draggable: true,
                 onDragStart: (e) => {
-                  if (!e.target.closest('[data-drag-handle]')) {
+                  const el = document.elementFromPoint(e.clientX, e.clientY);
+                  if (!el || !el.closest('[data-drag-handle]')) {
                     e.preventDefault();
                     return;
                   }
@@ -1360,6 +1360,7 @@ export default function App() {
                     onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
                     onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
                     onAddInvSub={(sub) => setTxModal({ asset: a, subAsset: sub })}
+                    onShowHistorySub={(sub) => setHistoryModal({ asset: a, subAsset: sub, isUSD: sub.currency === 'USD' })}
                     transactions={transactions.filter(t => t.asset_id === a.id)}
                     onDeleteTx={deleteTx}
                   />
@@ -1371,6 +1372,7 @@ export default function App() {
                     onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
                     onDelete={() => deleteAsset(a.id)}
                     onAddInvestment={() => setTxModal({ asset: a })}
+                    onShowHistory={() => setHistoryModal({ asset: a, isUSD: a.currency === 'USD' })}
                     transactions={transactions.filter(t => t.asset_id === a.id)}
                     onDeleteTx={deleteTx} />
                 </div>
@@ -1422,6 +1424,7 @@ export default function App() {
                 onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
                 onDelete={() => deleteAsset(a.id)}
                 onAddInvestment={() => setTxModal({ asset: a })}
+                onShowHistory={() => setHistoryModal({ asset: a, isUSD: a.currency === 'USD' })}
                 transactions={transactions.filter(t => t.asset_id === a.id)}
                 onDeleteTx={deleteTx} />
             ))}
@@ -1575,6 +1578,19 @@ export default function App() {
           usdThbRate={usdThbRate}
           onSave={saveTransaction}
           onClose={() => setTxModal(null)}
+        />
+      )}
+
+      {historyModal && (
+        <TransactionHistory
+          asset={historyModal.asset}
+          subAsset={historyModal.subAsset}
+          transactions={historyModal.subAsset
+            ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
+            : transactions.filter(t => t.asset_id === historyModal.asset.id)}
+          onDelete={deleteTx}
+          isUSD={historyModal.isUSD}
+          onClose={() => setHistoryModal(null)}
         />
       )}
     </div>
