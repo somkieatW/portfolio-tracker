@@ -892,8 +892,6 @@ export default function App() {
                 onEditSub={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("edit"); }}
                 onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
                 onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
-                onFetchPrices={() => handleFetchGroupPrices(a.id)}
-                fetchingPrices={fetchingStockGroupId === a.id}
               />
             ) : (
               <AssetCard key={a.id} asset={a} total={totalInvest}
