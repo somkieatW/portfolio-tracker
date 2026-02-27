@@ -455,7 +455,7 @@ function UpdateValueModal({ asset, onSave, onClose, usdThbRate }) {
 function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestment, onShowHistory, transactions, onDeleteTx, usdThbRate }) {
   const [hovered, setHovered] = useState(false);
   const { pl, plPct } = calcPL(asset);
-  const pct = ((asset.currentValue / total) * 100).toFixed(1);
+  const pct = ((asset.currentValue / total) * 100).toFixed(2);
   const isUp = pl >= 0;
   const hasFinnomenaCode = !!asset.finnomenaCode?.trim();
   const missingUnits = hasFinnomenaCode && !(asset.units > 0);
@@ -504,7 +504,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
           )}
           {asset.invested > 0 && (
             <p style={{ margin: "0 0 3px", fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 600 }}>
-              {isUp ? "▲" : "▼"} {isUSD ? `$${fmt(Math.abs(pl) / usdThbRate, 2)}` : `฿${fmt(Math.abs(pl))}`} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(1)}%)
+              {isUp ? "▲" : "▼"} {isUSD ? `$${fmt(Math.abs(pl) / usdThbRate, 2)}` : `฿${fmt(Math.abs(pl))}`} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(2)}%)
             </p>
           )}
           <p style={{ margin: 0, fontSize: 11, color: T.muted }}>
@@ -515,7 +515,6 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
       <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
         {[
           { label: "💰 + Invst", onClick: onAddInvestment, color: T.green },
-          { label: "📉 Price", onClick: onUpdateValue, color: T.accent },
           { label: "✏️ Edit", onClick: onEdit, color: T.muted },
           { label: `📜 History (${transactions?.length || 0})`, onClick: onShowHistory, color: T.text },
           { label: "🗑", onClick: onDelete, color: T.red },
@@ -660,12 +659,12 @@ function StockSubForm({ initial, onSave, onClose, usdThbRate, hasTransactions })
 }
 
 // ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
-function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, onAddInvSub, onShowHistorySub, transactions, onDeleteTx, usdThbRate }) {
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onAddInvSub, onShowHistorySub, transactions, onDeleteTx, usdThbRate }) {
   const [expanded, setExpanded] = useState(false);
   const { invested, currentValue } = groupTotals(asset);
   const pl = currentValue - invested;
   const plPct = invested > 0 ? (pl / invested) * 100 : 0;
-  const pct = total > 0 ? ((currentValue / total) * 100).toFixed(1) : "0.0";
+  const pct = total > 0 ? ((currentValue / total) * 100).toFixed(2) : "0.00";
   const isUp = pl >= 0;
   const subs = asset.subAssets || [];
   const catLabel = CATEGORY_TYPES.find(c => c.value === asset.type)?.label ?? asset.type;
@@ -696,7 +695,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
             <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: 16, color: T.text }}>฿{fmt(currentValue)}</p>
             {invested > 0 && (
               <p style={{ margin: "0 0 3px", fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 600 }}>
-                {isUp ? "▲" : "▼"} ฿{fmt(Math.abs(pl))} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(1)}%)
+                {isUp ? "▲" : "▼"} ฿{fmt(Math.abs(pl))} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(2)}%)
               </p>
             )}
             <p style={{ margin: 0, fontSize: 11, color: T.muted }}>Cost: ฿{fmt(invested)}</p>
@@ -747,7 +746,6 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                     <button onClick={() => onShowHistorySub(sub)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>
                       📜 History
                     </button>
-                    <button onClick={() => onUpdateSubValue(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
                     <button onClick={() => onEditSub(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
                     <button onClick={() => onDeleteSub(sub.id)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
                   </div>
@@ -1006,7 +1004,7 @@ export default function App() {
           name: cat ? cat.label : type,
           value,
           color: PALETTE[colorIdx >= 0 ? colorIdx : 0],
-          pct: ((value / totalInvest) * 100).toFixed(1)
+          pct: ((value / totalInvest) * 100).toFixed(2)
         };
       })
       .sort((a, b) => b.value - a.value); // sort largest to smallest
@@ -1212,7 +1210,7 @@ export default function App() {
               { label: "Initial Investment", value: `฿${fmt(totalInvested)}`, color: T.text, sub: "Cost basis" },
               { label: "Core Portfolio", value: `฿${fmt(totalInvest)}`, color: T.accent, sub: "Long-term safe assets" },
               { label: "Investment P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(2)}%` },
-              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(1)}% of core` },
+              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(2)}% of core` },
             ].map(s => (
               <div key={s.label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
@@ -1278,7 +1276,7 @@ export default function App() {
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
                         <span style={{ fontSize: 12, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{a.name.split(" (")[0]}</span>
                       </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: plPct >= 0 ? T.green : T.red }}>{plPct >= 0 ? "+" : ""}{plPct.toFixed(1)}%</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: plPct >= 0 ? T.green : T.red }}>{plPct >= 0 ? "+" : ""}{plPct.toFixed(2)}%</span>
                     </div>
                   );
                 })}
@@ -1387,7 +1385,7 @@ export default function App() {
                 <div>
                   <p style={{ margin: "0 0 4px", fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Speculation Size vs Investments</p>
                   <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: specOver > 0 ? T.orange : T.purple }}>
-                    {specOver > 0 ? `⚠️ ${specPct.toFixed(1)}% — Over Target Limit (${settings.specCap}%)` : `✓ ${specPct.toFixed(1)}% — Within Limit (${settings.specCap}%)`}
+                    {specOver > 0 ? `⚠️ ${specPct.toFixed(2)}% — Over Target Limit (${settings.specCap}%)` : `✓ ${specPct.toFixed(2)}% — Within Limit (${settings.specCap}%)`}
                   </p>
                 </div>
                 <div style={{ textAlign: "right" }}>
