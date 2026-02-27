@@ -280,17 +280,25 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
 }
 
 // ─── STOCK SUB-ASSET FORM ─────────────────────────────────────────────────────
-function StockSubForm({ initial, onSave, onClose }) {
-  const blank = { name: "", invested: "", currentValue: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
+function StockSubForm({ initial, onSave, onClose, usdThbRate }) {
+  const blank = { name: "", invested: "", investedUSD: "", currentValue: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
   const [form, setForm] = useState(initial
-    ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "", yahooSymbol: initial.yahooSymbol ?? "", qty: initial.qty ?? "", currency: initial.currency ?? "THB" }
+    ? { ...initial, invested: initial.invested ?? "", investedUSD: initial.investedUSD ?? "", currentValue: initial.currentValue ?? "", yahooSymbol: initial.yahooSymbol ?? "", qty: initial.qty ?? "", currency: initial.currency ?? "THB" }
     : blank);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const pl = parseFloat(form.currentValue || 0) - parseFloat(form.invested || 0);
-  const plPct = parseFloat(form.invested) > 0 ? (pl / parseFloat(form.invested)) * 100 : 0;
+  const isUSD = form.currency === "USD";
+  const rate = usdThbRate || 35;
+
+  // For P&L preview: if USD, invested display is in $, internally stored as THB
+  const investedThb = isUSD ? (parseFloat(form.investedUSD || 0) * rate) : parseFloat(form.invested || 0);
+  const pl = parseFloat(form.currentValue || 0) - investedThb;
+  const plPct = investedThb > 0 ? (pl / investedThb) * 100 : 0;
+
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter a stock name.");
-    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0, qty: parseFloat(form.qty) || 0, yahooSymbol: form.yahooSymbol.trim() });
+    const investedFinal = isUSD ? +(parseFloat(form.investedUSD || 0) * rate).toFixed(2) : parseFloat(form.invested) || 0;
+    const investedUSD = isUSD ? parseFloat(form.investedUSD) || 0 : null;
+    onSave({ ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: parseFloat(form.currentValue) || 0, qty: parseFloat(form.qty) || 0, yahooSymbol: form.yahooSymbol.trim() });
   };
   return (
     <>
@@ -298,14 +306,23 @@ function StockSubForm({ initial, onSave, onClose }) {
         <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. PTT, MSFT" autoFocus />
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Invested (฿)" hint="Total cost basis">
-          <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
-        </Field>
+        {isUSD ? (
+          <Field label="Invested ($)" hint="Total cost in USD">
+            <input style={inputStyle} type="number" value={form.investedUSD} onChange={e => set("investedUSD", e.target.value)} placeholder="0" />
+          </Field>
+        ) : (
+          <Field label="Invested (฿)" hint="Total cost basis">
+            <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
+          </Field>
+        )}
         <Field label="Current Value (฿)">
           <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
         </Field>
       </div>
-      {parseFloat(form.invested) > 0 && (
+      {isUSD && parseFloat(form.investedUSD) > 0 && (
+        <p style={{ margin: "-8px 0 12px", fontSize: 11, color: T.dim }}>= ฿{fmt(parseFloat(form.investedUSD) * rate, 2)} at current rate (฿{fmt(rate, 2)}/$)</p>
+      )}
+      {investedThb > 0 && (
         <div style={{ background: T.surface, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
           <p style={{ margin: 0, fontSize: 12, color: pl >= 0 ? T.green : T.red, fontWeight: 700 }}>
             Preview: {pl >= 0 ? "+" : ""}{plPct.toFixed(2)}% &nbsp;
@@ -346,7 +363,7 @@ function StockSubForm({ initial, onSave, onClose }) {
 }
 
 // ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
-function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue }) {
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, usdThbRate }) {
   const [expanded, setExpanded] = useState(false);
   const { invested, currentValue } = groupTotals(asset);
   const pl = currentValue - invested;
@@ -400,10 +417,19 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.text }}>{sub.name}</p>
                     {sub.notes && <span style={{ fontSize: 11, color: T.dim }}>· {sub.notes}</span>}
                   </div>
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>Cost: ฿{fmt(sub.invested)}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: T.muted }}>
+                    {sub.currency === "USD" && sub.investedUSD > 0 ? `Cost: $${fmt(sub.investedUSD, 2)} (฿${fmt(sub.invested)})` : `Cost: ฿${fmt(sub.invested)}`}
+                  </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: T.text }}>฿{fmt(sub.currentValue)}</p>
+                  {sub.currency === "USD" && usdThbRate ? (
+                    <>
+                      <p style={{ margin: "0 0 1px", fontWeight: 700, fontSize: 14, color: T.text }}>${fmt(sub.currentValue / usdThbRate, 2)}</p>
+                      <p style={{ margin: "0 0 2px", fontSize: 11, color: T.muted }}>≈ ฿{fmt(sub.currentValue)}</p>
+                    </>
+                  ) : (
+                    <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: T.text }}>฿{fmt(sub.currentValue)}</p>
+                  )}
                   {sub.invested > 0 && (
                     <p style={{ margin: 0, fontSize: 11, color: sup ? T.green : T.red, fontWeight: 600 }}>
                       {sup ? "+" : ""}{splPct.toFixed(1)}%
@@ -463,6 +489,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
   const [cacheInfo, setCacheInfo] = useState(null); // removed — was for banner
+  const [usdThbRate, setUsdThbRate] = useState(null); // USDTHB=X from price_cache
   const [dragOverId, setDragOverId] = useState(null);
   const dragSrcId = useRef(null);
   // Sub-asset modal state (for stock groups)
@@ -520,10 +547,16 @@ export default function App() {
           if (sub.yahooSymbol?.trim()) symbols.add(sub.yahooSymbol.trim());
         }
       }
+      // Always include USDTHB=X so we can display USD values
+      symbols.add("USDTHB=X");
       if (symbols.size === 0) return;
 
       const cache = await getPriceCache([...symbols]);
       if (cache.size === 0) return;
+
+      // Extract USDTHB rate
+      if (cache.has("USDTHB=X")) setUsdThbRate(cache.get("USDTHB=X").price);
+
 
       // Track staleness
       let oldest = null;
@@ -916,6 +949,7 @@ export default function App() {
                   <StockGroupCard
                     asset={a}
                     total={totalInvest}
+                    usdThbRate={usdThbRate}
                     onEdit={() => { setEditingAsset(a); setModal("edit"); }}
                     onDelete={() => deleteAsset(a.id)}
                     onAddSub={() => { setActiveGroupId(a.id); setEditingSubAsset(null); setSubModal("add"); }}
@@ -1106,12 +1140,12 @@ export default function App() {
       {/* ── SUB-ASSET MODALS (for stock groups) ── */}
       {subModal === "add" && (
         <Modal title="Add Stock to Group" onClose={closeSub}>
-          <StockSubForm onSave={saveSubAsset} onClose={closeSub} />
+          <StockSubForm usdThbRate={usdThbRate} onSave={saveSubAsset} onClose={closeSub} />
         </Modal>
       )}
       {subModal === "edit" && editingSubAsset && (
         <Modal title={`Edit — ${editingSubAsset.name}`} onClose={closeSub}>
-          <StockSubForm initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} />
+          <StockSubForm usdThbRate={usdThbRate} initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} />
         </Modal>
       )}
       {subModal === "update" && editingSubAsset && (
