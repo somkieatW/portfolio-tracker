@@ -737,19 +737,14 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                   </div>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap", width: 80, justifyContent: "flex-end", alignContent: "flex-start" }}>
                     <button onClick={() => onAddInvSub(sub)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>+ Invst</button>
-                    <button onClick={() => setHistoryId(historyId === sub.id ? null : sub.id)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>
-                      {historyId === sub.id ? "▲ Hide Transactions" : "▼ Show Transactions"}
+                    <button onClick={() => onShowHistorySub(sub)} style={{ width: "100%", fontSize: 11, padding: "3px 8px", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>
+                      📜 History
                     </button>
                     <button onClick={() => onUpdateSubValue(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
                     <button onClick={() => onEditSub(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
                     <button onClick={() => onDeleteSub(sub.id)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
                   </div>
                 </div>
-                {historyId === sub.id && (
-                  <div style={{ padding: "0 18px 10px" }}>
-                    <TransactionHistory transactions={transactions?.filter(t => t.sub_asset_id === sub.id)} onDelete={onDeleteTx} isUSD={sub.currency === 'USD'} />
-                  </div>
-                )}
               </div>
             );
           })}
