@@ -1235,14 +1235,14 @@ export default function App() {
               <p style={{ margin: "0 0 10px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Portfolio Breakdown</p>
               <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", height: 12, marginBottom: 10 }}>
                 {investments.map(a => (
-                  <div key={a.id} style={{ width: `${(a.currentValue / total) * 100}%`, background: a.color }} title={a.name} />
+                  <div key={a.id} style={{ width: `${(a.currentValue / totalInvest) * 100}%`, background: a.color }} title={a.name} />
                 ))}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
                 {[...investments].sort((a, b) => b.currentValue - a.currentValue).map(a => (
                   <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.color }} />
-                    <span style={{ fontSize: 10, color: T.muted }}>{a.name.split(" (")[0].split(" ").slice(0, 2).join(" ")} {((a.currentValue / total) * 100).toFixed(0)}%</span>
+                    <span style={{ fontSize: 10, color: T.muted }}>{a.name.split(" (")[0].split(" ").slice(0, 2).join(" ")} {((a.currentValue / totalInvest) * 100).toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
