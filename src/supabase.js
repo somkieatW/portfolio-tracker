@@ -56,3 +56,35 @@ export async function savePortfolio(userId, assets, settings) {
   if (error) console.error('Supabase save error:', error)
   return !error
 }
+
+// ─── Price Cache Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Batch-fetch cached prices for a list of symbols.
+ * Returns a Map<symbol, { price, currency, price_date, source, updated_at }>
+ */
+export async function getPriceCache(symbols) {
+  const result = new Map();
+  if (!supabase || !symbols?.length) return result;
+
+  const { data, error } = await supabase
+    .from('price_cache')
+    .select('symbol, price, currency, price_date, source, updated_at')
+    .in('symbol', symbols);
+
+  if (error) {
+    console.warn('[Cache] getPriceCache error:', error.message);
+    return result;
+  }
+  for (const row of data || []) result.set(row.symbol, row);
+  return result;
+}
+
+/**
+ * Returns true if the cached entry is older than thresholdHours.
+ */
+export function isCacheStale(updatedAt, thresholdHours = 18) {
+  if (!updatedAt) return true;
+  const ageMs = Date.now() - new Date(updatedAt).getTime();
+  return ageMs > thresholdHours * 60 * 60 * 1000;
+}

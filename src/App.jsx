@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
-import { loadPortfolio, savePortfolio, getDeviceId, supabase } from "./supabase.js";
+import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale } from "./supabase.js";
 import Auth from "./Auth.jsx";
-import { fetchAllFundNAVs } from "./finnomenaService.js";
-import { fetchSubAssetPrices } from "./yahooFinanceService.js";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -330,7 +328,7 @@ function StockSubForm({ initial, onSave, onClose }) {
 }
 
 // ─── STOCK GROUP CARD ─────────────────────────────────────────────────────────
-function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue, onFetchPrices, fetchingPrices }) {
+function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, onDeleteSub, onUpdateSubValue }) {
   const [expanded, setExpanded] = useState(false);
   const { invested, currentValue } = groupTotals(asset);
   const pl = currentValue - invested;
@@ -409,21 +407,12 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
             <button onClick={onAddSub} style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${asset.color}55`, background: `${asset.color}15`, color: asset.color, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
               + Add Stock
             </button>
-            <button
-              onClick={onFetchPrices}
-              disabled={fetchingPrices}
-              style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.green}55`, background: fetchingPrices ? "transparent" : `${T.green}15`, color: fetchingPrices ? T.dim : T.green, cursor: fetchingPrices ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              {fetchingPrices
-                ? <><span style={{ display: "inline-block", width: 8, height: 8, border: `2px solid ${T.green}44`, borderTop: `2px solid ${T.green}`, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Fetching…</>
-                : "🔄 Fetch Prices"}
-            </button>
             <button onClick={onEdit} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              ✏️
+              ✏️ Edit
             </button>
             <button onClick={onDelete} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-              🗑
+              🗑 Del
             </button>
-
           </div>
         </div>
       )}
@@ -455,14 +444,11 @@ export default function App() {
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
-  const [fetchingPrices, setFetchingPrices] = useState(false);
-  const [fetchToast, setFetchToast] = useState(null); // { type: 'success'|'warn'|'error', msg: string }
-  const [fetchingStockGroupId, setFetchingStockGroupId] = useState(null); // id of group currently fetching
+  const [cacheInfo, setCacheInfo] = useState(null); // { updatedAt, staleSymbols[] }
   // Sub-asset modal state (for stock groups)
   const [subModal, setSubModal] = useState(null); // 'add' | 'edit' | 'update'
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [editingSubAsset, setEditingSubAsset] = useState(null);
-
 
   // ── Auth Listener ──
   useEffect(() => {
@@ -500,6 +486,62 @@ export default function App() {
     }
     load();
   }, [userId]);
+
+  // ── Apply prices from price_cache after portfolio loads ──
+  useEffect(() => {
+    if (loadStatus !== "ready") return;
+
+    async function applyCache() {
+      // Collect all symbols we care about
+      const symbols = new Set();
+      for (const a of assets) {
+        if (a.finnomenaCode?.trim()) symbols.add(a.finnomenaCode.trim());
+        for (const sub of a.subAssets || []) {
+          if (sub.yahooSymbol?.trim()) symbols.add(sub.yahooSymbol.trim());
+        }
+      }
+      if (symbols.size === 0) return;
+
+      const cache = await getPriceCache([...symbols]);
+      if (cache.size === 0) return;
+
+      // Track staleness
+      let oldest = null;
+      const staleSymbols = [];
+      for (const [sym, row] of cache) {
+        if (!oldest || new Date(row.updated_at) < new Date(oldest)) oldest = row.updated_at;
+        if (isCacheStale(row.updated_at)) staleSymbols.push(sym);
+      }
+      setCacheInfo({ updatedAt: oldest, staleSymbols });
+
+      // Apply cached prices to assets
+      setAssets(prev => prev.map(a => {
+        // Finnomena fund on a regular asset
+        if (a.finnomenaCode?.trim() && cache.has(a.finnomenaCode.trim())) {
+          const row = cache.get(a.finnomenaCode.trim());
+          const newVal = a.units > 0 ? +(a.units * row.price).toFixed(2) : a.currentValue;
+          return { ...a, currentValue: newVal, navDate: row.price_date };
+        }
+        // Stock group — update sub-assets
+        if ((a.subAssets || []).length > 0) {
+          return {
+            ...a,
+            subAssets: a.subAssets.map(sub => {
+              if (!sub.yahooSymbol?.trim() || !cache.has(sub.yahooSymbol.trim())) return sub;
+              const row = cache.get(sub.yahooSymbol.trim());
+              const newVal = sub.qty > 0 ? +(sub.qty * row.price).toFixed(2) : sub.currentValue;
+              return { ...sub, currentValue: newVal, priceDate: row.price_date };
+            }),
+          };
+        }
+        return a;
+      }));
+    }
+    applyCache();
+    // Only run when portfolio first loads — not on every assets change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadStatus]);
+
 
   // ── Debounced save to Supabase ──
   useEffect(() => {
@@ -817,25 +859,22 @@ export default function App() {
         {/* ASSETS */}
         {tab === "assets" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: fetchToast ? 8 : 16, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{investments.length} Investment Assets</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={handleFetchPrices}
-                  disabled={fetchingPrices}
-                  style={{ background: fetchingPrices ? "transparent" : "#3b82f610", border: `1px solid ${T.accent}55`, borderRadius: 8, color: fetchingPrices ? T.dim : T.accent, padding: "7px 14px", cursor: fetchingPrices ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
-                  {fetchingPrices
-                    ? <><span style={{ display: "inline-block", width: 10, height: 10, border: `2px solid ${T.accent}44`, borderTop: `2px solid ${T.accent}`, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Fetching…</>
-                    : "🔄 Fetch Fund Prices"}
-                </button>
-                <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
-              </div>
+              <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
             </div>
-            {fetchToast && (
-              <div style={{ background: fetchToast.type === "success" ? "#10231600" : fetchToast.type === "warn" ? "#2a1f0090" : "#2a0a0a90", border: `1px solid ${fetchToast.type === "success" ? T.green : fetchToast.type === "warn" ? T.yellow : T.red}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: fetchToast.type === "success" ? T.green : fetchToast.type === "warn" ? T.yellow : T.red, fontWeight: 600 }}>
-                {fetchToast.msg}
-              </div>
-            )}
+            {/* Price cache info banner */}
+            {cacheInfo && (() => {
+              const hoursAgo = Math.round((Date.now() - new Date(cacheInfo.updatedAt).getTime()) / 3600000);
+              const isStale = cacheInfo.staleSymbols?.length > 0;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: isStale ? "#1f1200" : "#091a0a", border: `1px solid ${isStale ? T.yellow : T.green}33`, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 11 }}>
+                  <span style={{ color: isStale ? T.yellow : T.green }}>{isStale ? "⚠" : "✓"}</span>
+                  <span style={{ color: T.muted }}>Prices last updated <strong style={{ color: isStale ? T.yellow : T.green }}>{hoursAgo}h ago</strong>{isStale ? ` — some prices are stale (>${18}h). Next auto-refresh: every 6h via server.` : " · Auto-refreshed every 6 hours."}</span>
+                </div>
+              );
+            })()}
+
             {investments.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
                 <p style={{ fontSize: 40, marginBottom: 12 }}>📊</p>
