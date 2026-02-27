@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale } from "./supabase.js";
 import Auth from "./Auth.jsx";
+import { fetchCurrentNAV } from "./finnomenaService.js";
+import { fetchStockPrice, fetchUSDTHBRate } from "./yahooFinanceService.js";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -58,6 +60,15 @@ function groupTotals(asset) {
     currentValue: subs.reduce((s, x) => s + (x.currentValue || 0), 0),
   };
 }
+
+// Format a cache timestamp as "YYYY-MM-DD HH:mm"
+const fmtTs = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0') + ' ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+};
 
 // Returns a flat view of assets with group totals computed (for charts/sums)
 function normalizeAssets(assets) {
@@ -119,6 +130,7 @@ function AssetForm({ initial, onSave, onClose }) {
   const blank = { name: "", type: "equity", invested: "", currentValue: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "" };
   const [form, setForm] = useState(initial ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "", finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? "" } : blank);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const isStockGroup = STOCK_GROUP_TYPES.has(form.type);
 
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter an asset name");
@@ -135,14 +147,17 @@ function AssetForm({ initial, onSave, onClose }) {
           {CATEGORY_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Initial Invested (฿)">
-          <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
-        </Field>
-        <Field label="Current Value (฿)">
-          <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
-        </Field>
-      </div>
+      {/* Hide cost/value fields for stock groups — computed from sub-assets */}
+      {!isStockGroup && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Initial Invested (฿)">
+            <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="Current Value (฿)">
+            <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+      )}
       <Field label="Color">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {PALETTE.map(c => (
@@ -150,19 +165,21 @@ function AssetForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </Field>
-      {/* ── Finnomena auto-fetch fields ── */}
-      <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
-        <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔗 Finnomena Auto-Fetch (Optional)</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Fund Code" hint="e.g. K-US500X-A">
-            <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
-          </Field>
-          <Field label="Units Held" hint="Total units across all buys">
-            <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0" />
-          </Field>
+      {/* Finnomena section — only for non-stock-group assets */}
+      {!isStockGroup && (
+        <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
+          <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>🔗 Finnomena Auto-Fetch (Optional)</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Fund Code" hint="e.g. K-US500X-A">
+              <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
+            </Field>
+            <Field label="Units Held" hint="Total units across all buys">
+              <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0" />
+            </Field>
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Current Value = <strong style={{ color: T.muted }}>Units × NAV</strong> — updated automatically every 6 hours via the cache.</p>
         </div>
-        <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim }}>Current Value will be set to <strong style={{ color: T.muted }}>Units × NAV</strong> when you click "Fetch Fund Prices".</p>
-      </div>
+      )}
       <Field label="Notes / Reminders">
         <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. Matures Sep 2026, DCA monthly..." />
       </Field>
@@ -217,6 +234,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
   const hasFinnomenaCode = !!asset.finnomenaCode?.trim();
   const missingUnits = hasFinnomenaCode && !(asset.units > 0);
   const avgCost = asset.units > 0 && asset.invested > 0 ? asset.invested / asset.units : null;
+  const priceTs = fmtTs(asset.priceUpdatedAt || asset.navUpdatedAt);
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ background: hovered ? T.cardHover : T.card, border: `1px solid ${hovered ? T.borderLight : T.border}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10 }}>
@@ -233,9 +251,9 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
             <p style={{ margin: "2px 0 0", fontSize: 10, color: T.dim }}>
               {asset.finnomenaCode}{asset.units > 0 ? ` · ${fmt(asset.units, 4)} units` : ""}
               {avgCost ? ` · avg ฿${fmt(avgCost, 4)}/unit` : ""}
-              {asset.navDate ? <span style={{ color: T.muted }}> · NAV {asset.navDate}</span> : null}
             </p>
           )}
+          {priceTs && <p style={{ margin: "2px 0 0", fontSize: 10, color: T.dim }}>🕐 {priceTs}</p>}
           {asset.notes && <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{asset.notes}</p>}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -444,7 +462,9 @@ export default function App() {
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
-  const [cacheInfo, setCacheInfo] = useState(null); // { updatedAt, staleSymbols[] }
+  const [cacheInfo, setCacheInfo] = useState(null); // removed — was for banner
+  const [dragOverId, setDragOverId] = useState(null);
+  const dragSrcId = useRef(null);
   // Sub-asset modal state (for stock groups)
   const [subModal, setSubModal] = useState(null); // 'add' | 'edit' | 'update'
   const [activeGroupId, setActiveGroupId] = useState(null);
@@ -520,7 +540,7 @@ export default function App() {
         if (a.finnomenaCode?.trim() && cache.has(a.finnomenaCode.trim())) {
           const row = cache.get(a.finnomenaCode.trim());
           const newVal = a.units > 0 ? +(a.units * row.price).toFixed(2) : a.currentValue;
-          return { ...a, currentValue: newVal, navDate: row.price_date };
+          return { ...a, currentValue: newVal, navUpdatedAt: row.updated_at };
         }
         // Stock group — update sub-assets
         if ((a.subAssets || []).length > 0) {
@@ -530,7 +550,7 @@ export default function App() {
               if (!sub.yahooSymbol?.trim() || !cache.has(sub.yahooSymbol.trim())) return sub;
               const row = cache.get(sub.yahooSymbol.trim());
               const newVal = sub.qty > 0 ? +(sub.qty * row.price).toFixed(2) : sub.currentValue;
-              return { ...sub, currentValue: newVal, priceDate: row.price_date };
+              return { ...sub, currentValue: newVal, priceDate: row.price_date, priceUpdatedAt: row.updated_at };
             }),
           };
         }
@@ -603,10 +623,37 @@ export default function App() {
       .sort((a, b) => b.value - a.value); // sort largest to smallest
   })();
 
-  const saveAsset = (asset) => {
+  const saveAsset = async (asset) => {
+    // Persist the asset immediately
     setAssets(prev => prev.find(a => a.id === asset.id) ? prev.map(a => a.id === asset.id ? asset : a) : [...prev, asset]);
     setModal(null); setEditingAsset(null);
+
+    // Smart cache-on-save: if finnomenaCode set and not yet cached, try to fetch + cache it
+    if (asset.finnomenaCode?.trim() && supabase) {
+      const code = asset.finnomenaCode.trim();
+      const cached = await getPriceCache([code]);
+      if (!cached.has(code) || isCacheStale(cached.get(code)?.updated_at)) {
+        try {
+          const navData = await fetchCurrentNAV(code);
+          if (navData && asset.units > 0) {
+            const newVal = +(asset.units * navData.nav).toFixed(2);
+            const now = new Date().toISOString();
+            // Write to cache via Supabase
+            await supabase.from("price_cache").upsert({
+              symbol: code, type: "fund", price: navData.nav, currency: "THB",
+              price_date: navData.date, source: "finnomena", updated_at: now,
+            }, { onConflict: "symbol" });
+            // Apply to asset in state
+            setAssets(prev => prev.map(a => a.id === asset.id
+              ? { ...a, currentValue: newVal, navUpdatedAt: now } : a));
+          }
+        } catch (e) {
+          console.warn("[Cache-on-save] Finnomena fetch failed:", e.message);
+        }
+      }
+    }
   };
+
 
   const deleteAsset = (id) => {
     if (window.confirm("Delete this asset?")) setAssets(prev => prev.filter(a => a.id !== id));
@@ -617,43 +664,12 @@ export default function App() {
     setModal(null); setEditingAsset(null);
   };
 
-  const handleFetchPrices = async () => {
-    setFetchingPrices(true);
-    setFetchToast(null);
-    try {
-      const navMap = await fetchAllFundNAVs(assets);
-      if (navMap.size === 0) {
-        setFetchToast({ type: "warn", msg: "No funds matched. Check the Finnomena Code on your assets." });
-      } else {
-        // Count assets that have units AND matched NAV (will actually update currentValue)
-        const updatedCount = [...navMap.keys()].filter(id => {
-          const a = assets.find(x => x.id === id);
-          return a && a.units > 0;
-        }).length;
-        setAssets(prev => prev.map(a => {
-          const nav = navMap.get(a.id);
-          if (!nav) return a;
-          const newValue = a.units > 0 ? +(a.units * nav.nav).toFixed(2) : a.currentValue;
-          return { ...a, currentValue: newValue, navDate: nav.date };
-        }));
-        const date = [...navMap.values()][0]?.date ?? "";
-        setFetchToast({ type: "success", msg: `✓ Updated ${updatedCount} fund${updatedCount !== 1 ? "s" : ""} · NAV date: ${date}` });
-      }
-    } catch (err) {
-      console.error("[Finnomena] Fetch error:", err);
-      setFetchToast({ type: "error", msg: "Failed to fetch prices. Check your connection." });
-    } finally {
-      setFetchingPrices(false);
-      setTimeout(() => setFetchToast(null), 6000);
-    }
-  };
-
   const updateSettings = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
 
   // ── Sub-asset handlers (for stock groups) ──
   const closeSub = () => { setSubModal(null); setActiveGroupId(null); setEditingSubAsset(null); };
 
-  const saveSubAsset = (sub) => {
+  const saveSubAsset = async (sub) => {
     setAssets(prev => prev.map(a => {
       if (a.id !== activeGroupId) return a;
       const existing = (a.subAssets || []).find(s => s.id === sub.id);
@@ -663,7 +679,37 @@ export default function App() {
       return { ...a, subAssets };
     }));
     closeSub();
+
+    // Smart cache-on-save for Yahoo stocks
+    if (sub.yahooSymbol?.trim() && sub.qty > 0 && supabase) {
+      const sym = sub.yahooSymbol.trim();
+      const cached = await getPriceCache([sym]);
+      if (!cached.has(sym) || isCacheStale(cached.get(sym)?.updated_at)) {
+        try {
+          const priceData = await fetchStockPrice(sym);
+          if (priceData) {
+            const fx = sub.currency === "USD" ? await fetchUSDTHBRate() : null;
+            const thbPrice = fx ? +(priceData.price * fx).toFixed(4) : priceData.price;
+            const now = new Date().toISOString();
+            await supabase.from("price_cache").upsert({
+              symbol: sym, type: sub.currency === "USD" ? "us_stock" : "thai_stock",
+              price: thbPrice, currency: "THB",
+              price_date: priceData.date, source: "yahoo", updated_at: now,
+            }, { onConflict: "symbol" });
+            const newVal = +(sub.qty * thbPrice).toFixed(2);
+            setAssets(prev => prev.map(a => a.id !== activeGroupId ? a : {
+              ...a,
+              subAssets: (a.subAssets || []).map(s => s.id === sub.id
+                ? { ...s, currentValue: newVal, priceDate: priceData.date, priceUpdatedAt: now } : s),
+            }));
+          }
+        } catch (e) {
+          console.warn("[Cache-on-save] Yahoo fetch failed:", e.message);
+        }
+      }
+    }
   };
+
 
   const deleteSubAsset = (groupId, subId) => {
     if (!window.confirm("Delete this stock?")) return;
@@ -833,42 +879,61 @@ export default function App() {
               <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{investments.length} Investment Assets</p>
               <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
             </div>
-            {/* Price cache info banner */}
-            {cacheInfo && (() => {
-              const hoursAgo = Math.round((Date.now() - new Date(cacheInfo.updatedAt).getTime()) / 3600000);
-              const isStale = cacheInfo.staleSymbols?.length > 0;
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, background: isStale ? "#1f1200" : "#091a0a", border: `1px solid ${isStale ? T.yellow : T.green}33`, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 11 }}>
-                  <span style={{ color: isStale ? T.yellow : T.green }}>{isStale ? "⚠" : "✓"}</span>
-                  <span style={{ color: T.muted }}>Prices last updated <strong style={{ color: isStale ? T.yellow : T.green }}>{hoursAgo}h ago</strong>{isStale ? ` — some prices are stale (>${18}h). Next auto-refresh: every 6h via server.` : " · Auto-refreshed every 6 hours."}</span>
-                </div>
-              );
-            })()}
-
             {investments.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
                 <p style={{ fontSize: 40, marginBottom: 12 }}>📊</p>
                 <p>No investment assets yet. Add your first one!</p>
               </div>
             )}
-            {investments.map(a => STOCK_GROUP_TYPES.has(a.type) ? (
-              <StockGroupCard
-                key={a.id}
-                asset={a}
-                total={totalInvest}
-                onEdit={() => { setEditingAsset(a); setModal("edit"); }}
-                onDelete={() => deleteAsset(a.id)}
-                onAddSub={() => { setActiveGroupId(a.id); setEditingSubAsset(null); setSubModal("add"); }}
-                onEditSub={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("edit"); }}
-                onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
-                onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
-              />
-            ) : (
-              <AssetCard key={a.id} asset={a} total={totalInvest}
-                onEdit={() => { setEditingAsset(a); setModal("edit"); }}
-                onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
-                onDelete={() => deleteAsset(a.id)} />
-            ))}
+            {investments.map(a => {
+              const isDragOver = dragOverId === a.id;
+              const wrapStyle = {
+                opacity: dragSrcId.current === a.id ? 0.4 : 1,
+                borderTop: isDragOver ? `2px solid ${T.accent}` : "2px solid transparent",
+                transition: "border-color 0.15s, opacity 0.15s",
+              };
+              const dragHandlers = {
+                draggable: true,
+                onDragStart: () => { dragSrcId.current = a.id; },
+                onDragEnd: () => { dragSrcId.current = null; setDragOverId(null); },
+                onDragOver: (e) => { e.preventDefault(); setDragOverId(a.id); },
+                onDrop: () => {
+                  if (!dragSrcId.current || dragSrcId.current === a.id) return;
+                  const srcId = dragSrcId.current;
+                  setAssets(prev => {
+                    const list = [...prev];
+                    const srcIdx = list.findIndex(x => x.id === srcId);
+                    const dstIdx = list.findIndex(x => x.id === a.id);
+                    const [moved] = list.splice(srcIdx, 1);
+                    list.splice(dstIdx, 0, moved);
+                    return list;
+                  });
+                  setDragOverId(null);
+                },
+              };
+              return STOCK_GROUP_TYPES.has(a.type) ? (
+                <div key={a.id} style={wrapStyle} {...dragHandlers}>
+                  <StockGroupCard
+                    asset={a}
+                    total={totalInvest}
+                    onEdit={() => { setEditingAsset(a); setModal("edit"); }}
+                    onDelete={() => deleteAsset(a.id)}
+                    onAddSub={() => { setActiveGroupId(a.id); setEditingSubAsset(null); setSubModal("add"); }}
+                    onEditSub={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("edit"); }}
+                    onDeleteSub={(subId) => deleteSubAsset(a.id, subId)}
+                    onUpdateSubValue={(sub) => { setActiveGroupId(a.id); setEditingSubAsset(sub); setSubModal("update"); }}
+                  />
+                </div>
+              ) : (
+                <div key={a.id} style={wrapStyle} {...dragHandlers}>
+                  <AssetCard asset={a} total={totalInvest}
+                    onEdit={() => { setEditingAsset(a); setModal("edit"); }}
+                    onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
+                    onDelete={() => deleteAsset(a.id)} />
+                </div>
+              );
+            })}
+
           </div>
         )}
 
