@@ -1235,17 +1235,14 @@ export default function App() {
               <p style={{ margin: "0 0 10px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Portfolio Breakdown</p>
               <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", height: 12, marginBottom: 10 }}>
                 {investments.map(a => (
-                  <div key={a.id} style={{ width: `${(a.currentValue / grandTotal) * 100}%`, background: a.color }} title={a.name} />
-                ))}
-                {speculative.map(a => (
-                  <div key={a.id} style={{ width: `${(a.currentValue / grandTotal) * 100}%`, background: a.color, opacity: 0.55 }} title={a.name + " (spec)"} />
+                  <div key={a.id} style={{ width: `${(a.currentValue / total) * 100}%`, background: a.color }} title={a.name} />
                 ))}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
-                {[...normalizedAssets].sort((a, b) => b.currentValue - a.currentValue).map(a => (
+                {[...investments].sort((a, b) => b.currentValue - a.currentValue).map(a => (
                   <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.color, opacity: a.isSpeculative ? 0.6 : 1 }} />
-                    <span style={{ fontSize: 10, color: T.muted }}>{a.name.split(" (")[0].split(" ").slice(0, 2).join(" ")} {((a.currentValue / grandTotal) * 100).toFixed(0)}%</span>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.color }} />
+                    <span style={{ fontSize: 10, color: T.muted }}>{a.name.split(" (")[0].split(" ").slice(0, 2).join(" ")} {((a.currentValue / total) * 100).toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
@@ -1281,15 +1278,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick update */}
-            <p style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 12px" }}>Quick Update Values</p>
+            {/* Asset Values Overview */}
+            <p style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 12px" }}>Asset Values Overview</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
               {[...normalizedAssets].sort((a, b) => b.currentValue - a.currentValue).map(a => (
-                <div key={a.id} onClick={() => { setEditingAsset(assets.find(x => x.id === a.id)); setModal("update"); }}
-                  style={{ background: T.card, border: `1px solid ${T.border}`, borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}>
+                <div key={a.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name.split(" (")[0]}</p>
                   <p style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: a.color }}>฿{fmt(a.currentValue)}</p>
-                  <p style={{ margin: 0, fontSize: 10, color: T.dim }}>Tap to update →</p>
                 </div>
               ))}
             </div>
