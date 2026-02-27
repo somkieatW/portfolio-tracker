@@ -457,7 +457,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                   )}
                   {sub.invested > 0 && (
                     <p style={{ margin: 0, fontSize: 11, color: sup ? T.green : T.red, fontWeight: 600 }}>
-                      {sup ? "+" : ""}{splPct.toFixed(1)}%
+                      {sup ? "+" : ""}{splPct.toFixed(2)}%
                     </p>
                   )}
                   {fmtTs(sub.priceUpdatedAt) && <p style={{ margin: 0, fontSize: 10, color: T.dim }}>🕐 {fmtTs(sub.priceUpdatedAt)}</p>}
