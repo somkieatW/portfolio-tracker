@@ -509,7 +509,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
         {[
           { label: "💰 + Invst", onClick: onAddInvestment, color: T.green },
           { label: "📉 Price", onClick: onUpdateValue, color: T.accent },
-          { label: "✏️ Edit", onClick: onEdit, color: T.accentGlow.replace('20', 'aa') },
+          { label: "✏️ Edit", onClick: onEdit, color: T.muted },
           { label: `📜 History (${transactions?.length || 0})`, onClick: onShowHistory, color: T.text },
           { label: "🗑", onClick: onDelete, color: T.red },
         ].map(btn => (
@@ -741,7 +741,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
                       {historyId === sub.id ? "▲ Hide Transactions" : "▼ Show Transactions"}
                     </button>
                     <button onClick={() => onUpdateSubValue(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.green}44`, background: `${T.green}11`, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>📈</button>
-                    <button onClick={() => onEditSub(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
+                    <button onClick={() => onEditSub(sub)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
                     <button onClick={() => onDeleteSub(sub.id)} style={{ flex: 1, fontSize: 11, padding: "3px 0", borderRadius: 6, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
                   </div>
                 </div>
@@ -759,7 +759,7 @@ function StockGroupCard({ asset, total, onEdit, onDelete, onAddSub, onEditSub, o
             <button onClick={onAddSub} style={{ flex: 2, padding: "8px 0", borderRadius: 8, border: `1px solid ${asset.color}55`, background: `${asset.color}15`, color: asset.color, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
               + Add Stock
             </button>
-            <button onClick={onEdit} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.accent}44`, background: `${T.accent}11`, color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            <button onClick={onEdit} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.muted}44`, background: `${T.muted}11`, color: T.text, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
               ✏️ Edit
             </button>
             <button onClick={onDelete} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${T.red}44`, background: `${T.red}11`, color: T.red, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
