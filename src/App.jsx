@@ -126,15 +126,32 @@ const inputStyle = { width: "100%", boxSizing: "border-box", background: T.surfa
 const selectStyle = { ...inputStyle, cursor: "pointer" };
 
 // ─── ASSET FORM ───────────────────────────────────────────────────────────────
-function AssetForm({ initial, onSave, onClose }) {
-  const blank = { name: "", type: "equity", invested: "", currentValue: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "" };
-  const [form, setForm] = useState(initial ? { ...initial, invested: initial.invested ?? "", currentValue: initial.currentValue ?? "", finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? "" } : blank);
+function AssetForm({ initial, onSave, onClose, usdThbRate }) {
+  const rate = usdThbRate || 35;
+  const blank = { name: "", type: "equity", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "" };
+  const [form, setForm] = useState(() => {
+    if (!initial) return blank;
+    const isUSD = (initial.currency || "THB") === "USD";
+    return {
+      ...initial, invested: initial.invested ?? "", investedUSD: initial.investedUSD ?? "",
+      currentValue: initial.currentValue ?? "",
+      currentValueUSD: isUSD && initial.currentValue ? +((initial.currentValue / rate)).toFixed(2) : "",
+      finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? ""
+    };
+  });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const isStockGroup = STOCK_GROUP_TYPES.has(form.type);
+  const isUSD = form.currency === "USD";
 
   const handleSave = () => {
     if (!form.name.trim()) return alert("Please enter an asset name");
-    onSave({ ...form, id: form.id || uid(), invested: parseFloat(form.invested) || 0, currentValue: parseFloat(form.currentValue) || 0, units: parseFloat(form.units) || 0, finnomenaCode: form.finnomenaCode.trim() });
+    const investedFinal = isUSD ? +(parseFloat(form.investedUSD || 0) * rate).toFixed(2) : parseFloat(form.invested) || 0;
+    const currentValueFinal = isUSD ? +(parseFloat(form.currentValueUSD || 0) * rate).toFixed(2) : parseFloat(form.currentValue) || 0;
+    const investedUSD = isUSD ? parseFloat(form.investedUSD) || 0 : null;
+    onSave({
+      ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: currentValueFinal,
+      units: parseFloat(form.units) || 0, finnomenaCode: form.finnomenaCode.trim()
+    });
   };
 
   return (
@@ -142,21 +159,51 @@ function AssetForm({ initial, onSave, onClose }) {
       <Field label="Asset Name">
         <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. K-US500X-A" />
       </Field>
-      <Field label="Category Type">
-        <select style={selectStyle} value={form.type} onChange={e => set("type", e.target.value)}>
-          {CATEGORY_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
-      </Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end" }}>
+        <Field label="Category Type">
+          <select style={selectStyle} value={form.type} onChange={e => set("type", e.target.value)}>
+            {CATEGORY_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Currency">
+          <select style={{ ...selectStyle, width: 90 }} value={form.currency} onChange={e => set("currency", e.target.value)}>
+            <option value="THB">฿ THB</option>
+            <option value="USD">$ USD</option>
+          </select>
+        </Field>
+      </div>
       {/* Hide cost/value fields for stock groups — computed from sub-assets */}
       {!isStockGroup && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Initial Invested (฿)">
-            <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
-          </Field>
-          <Field label="Current Value (฿)">
-            <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
-          </Field>
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {isUSD ? (
+              <Field label="Initial Invested ($)">
+                <input style={inputStyle} type="number" value={form.investedUSD} onChange={e => set("investedUSD", e.target.value)} placeholder="0" />
+              </Field>
+            ) : (
+              <Field label="Initial Invested (฿)">
+                <input style={inputStyle} type="number" value={form.invested} onChange={e => set("invested", e.target.value)} placeholder="0" />
+              </Field>
+            )}
+            {isUSD ? (
+              <Field label="Current Value ($)">
+                <input style={inputStyle} type="number" value={form.currentValueUSD} onChange={e => set("currentValueUSD", e.target.value)} placeholder="0" />
+              </Field>
+            ) : (
+              <Field label="Current Value (฿)">
+                <input style={inputStyle} type="number" value={form.currentValue} onChange={e => set("currentValue", e.target.value)} placeholder="0" />
+              </Field>
+            )}
+          </div>
+          {isUSD && (parseFloat(form.investedUSD) > 0 || parseFloat(form.currentValueUSD) > 0) && (
+            <p style={{ margin: "-8px 0 12px", fontSize: 11, color: T.dim }}>
+              {parseFloat(form.investedUSD) > 0 && <>Cost ฿{fmt(parseFloat(form.investedUSD) * rate, 2)}</>}
+              {parseFloat(form.investedUSD) > 0 && parseFloat(form.currentValueUSD) > 0 && <span style={{ color: T.border }}> · </span>}
+              {parseFloat(form.currentValueUSD) > 0 && <>Value ฿{fmt(parseFloat(form.currentValueUSD) * rate, 2)}</>}
+              <span style={{ color: T.dim }}> &nbsp;·&nbsp; rate ฿{fmt(rate, 2)}/$</span>
+            </p>
+          )}
+        </>
       )}
       <Field label="Color">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -165,10 +212,10 @@ function AssetForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </Field>
-      {/* Finnomena section — only for non-stock-group assets */}
-      {!isStockGroup && (
+      {/* Finnomena section — only for non-stock-group, THB assets */}
+      {!isStockGroup && !isUSD && (
         <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
-          <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>� Auto Price Update (Optional)</p>
+          <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>📈 Auto Price Update (Optional)</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Fund Code / Ticker" hint="e.g. K-US500X-A">
               <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
@@ -198,14 +245,19 @@ function AssetForm({ initial, onSave, onClose }) {
   );
 }
 
-// ─── UPDATE VALUE MODAL ───────────────────────────────────────────────────────
-function UpdateValueModal({ asset, onSave, onClose }) {
-  const [val, setVal] = useState(asset.currentValue);
-  const pl = parseFloat(val) - asset.invested;
+// ─── UPDATE VALUE MODAL ──────────────────────────────────────────────────
+// UpdateValueModal: if asset.currency === 'USD', input in $ and convert to THB on save
+function UpdateValueModal({ asset, onSave, onClose, usdThbRate }) {
+  const isUSD = asset.currency === "USD";
+  const rate = usdThbRate || 35;
+  const initVal = isUSD && asset.currentValue ? +((asset.currentValue / rate)).toFixed(2) : asset.currentValue;
+  const [val, setVal] = useState(initVal);
+  const currentThb = isUSD ? parseFloat(val || 0) * rate : parseFloat(val || 0);
+  const pl = currentThb - asset.invested;
   const plPct = asset.invested > 0 ? (pl / asset.invested) * 100 : 0;
   return (
     <Modal title={`Update — ${asset.name}`} onClose={onClose}>
-      <Field label="Current Market Value (฿)" hint="Enter today's latest value">
+      <Field label={isUSD ? "Current Market Value ($)" : "Current Market Value (฿)"} hint={isUSD ? `Will be stored as ฿${fmt(parseFloat(val || 0) * rate, 2)} at rate ฿${fmt(rate, 2)}/$` : "Enter today's latest value"}>
         <input style={inputStyle} type="number" value={val} onChange={e => setVal(e.target.value)} autoFocus />
       </Field>
       {asset.invested > 0 && (
@@ -219,14 +271,14 @@ function UpdateValueModal({ asset, onSave, onClose }) {
       )}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-        <button onClick={() => onSave(parseFloat(val) || 0)} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.green, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>Update Value</button>
+        <button onClick={() => onSave(isUSD ? +(parseFloat(val || 0) * rate).toFixed(2) : parseFloat(val) || 0)} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.green, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>Update Value</button>
       </div>
     </Modal>
   );
 }
 
 // ─── ASSET CARD ───────────────────────────────────────────────────────────────
-function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
+function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, usdThbRate }) {
   const [hovered, setHovered] = useState(false);
   const { pl, plPct } = calcPL(asset);
   const pct = ((asset.currentValue / total) * 100).toFixed(1);
@@ -235,6 +287,9 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
   const missingUnits = hasFinnomenaCode && !(asset.units > 0);
   const avgCost = asset.units > 0 && asset.invested > 0 ? asset.invested / asset.units : null;
   const priceTs = fmtTs(asset.priceUpdatedAt || asset.navUpdatedAt);
+  const isUSD = asset.currency === "USD" && !!usdThbRate;
+  const usdVal = isUSD ? fmt(asset.currentValue / usdThbRate, 2) : null;
+  const usdCost = isUSD && asset.investedUSD ? fmt(asset.investedUSD, 2) : null;
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ background: hovered ? T.cardHover : T.card, border: `1px solid ${hovered ? T.borderLight : T.border}`, borderLeft: `3px solid ${asset.color}`, borderRadius: 12, padding: "16px 18px", marginBottom: 10 }}>
@@ -257,13 +312,22 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete }) {
           {asset.notes && <p style={{ margin: "4px 0 0", fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{asset.notes}</p>}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: 16, color: T.text }}>฿{fmt(asset.currentValue)}</p>
+          {isUSD ? (
+            <>
+              <p style={{ margin: "0 0 1px", fontWeight: 800, fontSize: 16, color: T.text }}>${usdVal}</p>
+              <p style={{ margin: "0 0 2px", fontSize: 11, color: T.muted }}>≈ ฿{fmt(asset.currentValue)}</p>
+            </>
+          ) : (
+            <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: 16, color: T.text }}>฿{fmt(asset.currentValue)}</p>
+          )}
           {asset.invested > 0 && (
             <p style={{ margin: "0 0 3px", fontSize: 12, color: isUp ? T.green : T.red, fontWeight: 600 }}>
-              {isUp ? "▲" : "▼"} ฿{fmt(Math.abs(pl))} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(1)}%)
+              {isUp ? "▲" : "▼"} {isUSD ? `$${fmt(Math.abs(pl) / usdThbRate, 2)}` : `฿${fmt(Math.abs(pl))}`} ({isUp ? "+" : "-"}{Math.abs(plPct).toFixed(1)}%)
             </p>
           )}
-          <p style={{ margin: 0, fontSize: 11, color: T.muted }}>Cost: ฿{fmt(asset.invested)}</p>
+          <p style={{ margin: 0, fontSize: 11, color: T.muted }}>
+            {isUSD && usdCost ? `Cost: $${usdCost} (฿${fmt(asset.invested)})` : `Cost: ฿${fmt(asset.invested)}`}
+          </p>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, opacity: hovered ? 1 : 0.35 }}>
@@ -985,7 +1049,7 @@ export default function App() {
                 </div>
               ) : (
                 <div key={a.id} style={wrapStyle} {...dragHandlers}>
-                  <AssetCard asset={a} total={totalInvest}
+                  <AssetCard asset={a} total={totalInvest} usdThbRate={usdThbRate}
                     onEdit={() => { setEditingAsset(a); setModal("edit"); }}
                     onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
                     onDelete={() => deleteAsset(a.id)} />
@@ -1033,7 +1097,7 @@ export default function App() {
               </div>
             )}
             {speculative.map(a => (
-              <AssetCard key={a.id} asset={a} total={totalSpec || 1}
+              <AssetCard key={a.id} asset={a} total={totalSpec || 1} usdThbRate={usdThbRate}
                 onEdit={() => { setEditingAsset(a); setModal("edit"); }}
                 onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
                 onDelete={() => deleteAsset(a.id)} />
@@ -1150,16 +1214,16 @@ export default function App() {
       {/* ── MODALS ── */}
       {modal === "add" && (
         <Modal title="Add New Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
+          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
         </Modal>
       )}
       {modal === "edit" && editingAsset && (
         <Modal title="Edit Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
+          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
         </Modal>
       )}
       {modal === "update" && editingAsset && (
-        <UpdateValueModal asset={editingAsset} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
+        <UpdateValueModal asset={editingAsset} usdThbRate={usdThbRate} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
       )}
 
       {/* ── SUB-ASSET MODALS (for stock groups) ── */}
