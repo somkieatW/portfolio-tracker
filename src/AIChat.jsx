@@ -7,12 +7,17 @@ const T = {
     accent: "#3b82f6", green: "#22c55e", red: "#ef4444", yellow: "#eab308"
 };
 
-export default function AIChat({ assets, transactions, netWorth, settings }) {
+export default function AIChat({ assets, transactions, netWorth, settings, updateSettings }) {
     const [messages, setMessages] = useState(() => {
         // Check if we have a key first to show a welcome or warning message
         if (!settings?.geminiApiKey) {
             return [{ role: "assistant", content: "⚠️ Please go to the **Settings** tab and enter your Gemini API Key to start chatting." }];
         }
+
+        if (settings?.aiChatHistory && Array.isArray(settings.aiChatHistory) && settings.aiChatHistory.length > 0) {
+            return settings.aiChatHistory;
+        }
+
         return [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your assets, transactions, and overall net worth. What would you like to know?" }];
     });
     const [input, setInput] = useState("");
@@ -23,6 +28,24 @@ export default function AIChat({ assets, transactions, netWorth, settings }) {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    // Save to Supabase when new messages are added
+    useEffect(() => {
+        if (settings?.geminiApiKey && messages.length > 0) {
+            // Only update if it grew or changed to avoid infinite loop
+            const savedHist = settings.aiChatHistory || [];
+            if (savedHist.length !== messages.length) {
+                updateSettings('aiChatHistory', messages);
+            }
+        }
+    }, [messages, settings?.geminiApiKey, updateSettings, settings.aiChatHistory]);
+
+    const handleClear = () => {
+        if (!window.confirm("Clear conversation history?")) return;
+        const fresh = [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your assets, transactions, and overall net worth. What would you like to know?" }];
+        setMessages(fresh);
+        updateSettings('aiChatHistory', fresh);
+    };
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -56,10 +79,12 @@ Settings: ${JSON.stringify(settings, null, 2)}
 Please keep your answer concise, extremely helpful, and formatted using Markdown for readability.
 `;
 
-            const history = messages.filter(m => !m.content.startsWith("⚠️")).map(m => ({
-                role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: m.content }]
-            }));
+            const history = messages
+                .filter(m => !m.content.startsWith("⚠️") && !m.content.startsWith("Hi! I'm your AI Portfolio Assistant"))
+                .map(m => ({
+                    role: m.role === "assistant" ? "model" : "user",
+                    parts: [{ text: m.content }]
+                }));
 
             // Prepend the system context to the first message sent to the API, 
             // or start a new chat history if this is the first real message.
@@ -118,7 +143,16 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
             </div>
 
             {/* Input Area */}
-            <div style={{ padding: 16, background: T.card, borderTop: `1px solid ${T.border}`, display: "flex", gap: 10 }}>
+            <div style={{ padding: 16, background: T.card, borderTop: `1px solid ${T.border}`, display: "flex", gap: 10, alignItems: "center" }}>
+                <button
+                    onClick={handleClear}
+                    title="Clear Chat History"
+                    style={{ flexShrink: 0, width: 44, height: 44, borderRadius: "50%", background: "transparent", color: T.muted, border: `1px solid ${T.borderLight}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
                 <input
                     style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 24, padding: "12px 20px", color: T.text, fontSize: 15, outline: "none", fontFamily: "inherit" }}
                     placeholder="Ask about your portfolio..."
