@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, deleteTransaction } from "./supabase.js";
 import Auth from "./Auth.jsx";
+import AIChat from "./AIChat.jsx";
 import { fetchCurrentNAV } from "./finnomenaService.js";
 import { fetchStockPrice, fetchUSDTHBRate } from "./yahooFinanceService.js";
 
@@ -1157,6 +1158,7 @@ export default function App() {
     { id: "assets", label: "Assets" },
     { id: "speculative", label: "⚡ Speculation" },
     { id: "projection", label: "Projection" },
+    { id: "ai", label: "✨ AI Assistant" },
     { id: "settings", label: "⚙ Settings" },
   ];
 
@@ -1483,6 +1485,11 @@ export default function App() {
           </div>
         )}
 
+        {/* AI ASSISTANT */}
+        {tab === "ai" && (
+          <AIChat assets={assets} transactions={transactions} netWorth={netWorth} settings={settings} />
+        )}
+
         {/* SETTINGS */}
         {tab === "settings" && (
           <div>
@@ -1503,6 +1510,9 @@ export default function App() {
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>฿{fmt(settings.dca)}</span>
                   <span style={{ fontSize: 11, color: T.muted }}>฿10,000</span>
                 </div>
+              </Field>
+              <Field label="Gemini API Key" hint="Required for AI Assistant.">
+                <input style={inputStyle} type="password" value={settings.geminiApiKey || ""} onChange={e => updateSettings("geminiApiKey", e.target.value)} placeholder="AIzaSy..." />
               </Field>
             </div>
 
