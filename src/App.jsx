@@ -1487,7 +1487,7 @@ export default function App() {
 
         {/* AI ASSISTANT */}
         {tab === "ai" && (
-          <AIChat assets={assets} transactions={transactions} netWorth={netWorth} settings={settings} updateSettings={updateSettings} />
+          <AIChat assets={normalizedAssets} transactions={transactions} netWorth={netWorth} settings={settings} updateSettings={updateSettings} />
         )}
 
         {/* SETTINGS */}
