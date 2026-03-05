@@ -916,7 +916,8 @@ export default function App() {
         // Yahoo finance on a regular asset
         if (a.yahooSymbol?.trim() && cache.has(a.yahooSymbol.trim())) {
           const row = cache.get(a.yahooSymbol.trim());
-          const newVal = a.qty > 0 ? +(a.qty * row.price).toFixed(2) : a.currentValue;
+          const px = row.currency === "USD" && cache.has("USDTHB=X") ? row.price * cache.get("USDTHB=X").price : row.price;
+          const newVal = a.qty > 0 ? +(a.qty * px).toFixed(2) : a.currentValue;
           return { ...a, currentValue: newVal, priceUpdatedAt: row.updated_at };
         }
         // Stock group — update sub-assets
@@ -926,7 +927,8 @@ export default function App() {
             subAssets: a.subAssets.map(sub => {
               if (!sub.yahooSymbol?.trim() || !cache.has(sub.yahooSymbol.trim())) return sub;
               const row = cache.get(sub.yahooSymbol.trim());
-              const newVal = sub.qty > 0 ? +(sub.qty * row.price).toFixed(2) : sub.currentValue;
+              const px = row.currency === "USD" && cache.has("USDTHB=X") ? row.price * cache.get("USDTHB=X").price : row.price;
+              const newVal = sub.qty > 0 ? +(sub.qty * px).toFixed(2) : sub.currentValue;
               return { ...sub, currentValue: newVal, priceDate: row.price_date, priceUpdatedAt: row.updated_at };
             }),
           };
@@ -1077,12 +1079,14 @@ export default function App() {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
-            const fx = asset.currency === "USD" ? await fetchUSDTHBRate() : null;
+            const isUsd = asset.currency === "USD";
+            const fx = isUsd ? await fetchUSDTHBRate() : null;
             const thbPrice = fx ? +(priceData.price * fx).toFixed(4) : priceData.price;
+            const dbPrice = isUsd ? priceData.price : thbPrice;
             const now = new Date().toISOString();
             await supabase.from("price_cache").upsert({
-              symbol: sym, type: asset.currency === "USD" ? "us_stock" : (asset.type === "gold" ? "commodity" : "other"),
-              price: thbPrice, currency: "THB",
+              symbol: sym, type: isUsd ? "us_stock" : (asset.type === "gold" ? "commodity" : "other"),
+              price: dbPrice, currency: isUsd ? "USD" : "THB",
               price_date: priceData.date, source: "yahoo", updated_at: now,
             }, { onConflict: "symbol" });
             const newVal = +(asset.qty * thbPrice).toFixed(2);
@@ -1130,12 +1134,14 @@ export default function App() {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
-            const fx = sub.currency === "USD" ? await fetchUSDTHBRate() : null;
+            const isUsd = sub.currency === "USD";
+            const fx = isUsd ? await fetchUSDTHBRate() : null;
             const thbPrice = fx ? +(priceData.price * fx).toFixed(4) : priceData.price;
+            const dbPrice = isUsd ? priceData.price : thbPrice;
             const now = new Date().toISOString();
             await supabase.from("price_cache").upsert({
-              symbol: sym, type: sub.currency === "USD" ? "us_stock" : "thai_stock",
-              price: thbPrice, currency: "THB",
+              symbol: sym, type: isUsd ? "us_stock" : "thai_stock",
+              price: dbPrice, currency: isUsd ? "USD" : "THB",
               price_date: priceData.date, source: "yahoo", updated_at: now,
             }, { onConflict: "symbol" });
             const newVal = +(sub.qty * thbPrice).toFixed(2);
