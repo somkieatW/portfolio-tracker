@@ -158,18 +158,15 @@ async function main() {
     for (const [symbol, type] of yahooSymbols) {
         try {
             const { price, currency, priceDate } = await fetchYahooPrice(symbol);
-            // For USD stocks, also store the THB-converted price via rate if available
-            const usdThbRow = rows.find(r => r.symbol === 'USDTHB=X');
-            const thbPrice = currency === 'USD' && usdThbRow ? +(price * usdThbRow.price).toFixed(4) : price;
             rows.push({
                 symbol, type,
-                price: thbPrice,
-                currency: 'THB',
+                price: price,
+                currency: currency,
                 price_date: priceDate,
                 source: 'yahoo',
                 updated_at: new Date().toISOString(),
             });
-            console.log(`  ${symbol} (${type}) → ${thbPrice} THB`);
+            console.log(`  ${symbol} (${type}) → ${price} ${currency}`);
         } catch (e) {
             errors.push(`${symbol}: ${e.message}`);
         }
