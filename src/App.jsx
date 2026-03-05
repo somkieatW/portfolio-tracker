@@ -136,7 +136,7 @@ const selectStyle = { ...inputStyle, cursor: "pointer" };
 // ─── ASSET FORM ───────────────────────────────────────────────────────────────
 function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
   const rate = usdThbRate || 35;
-  const blank = { name: "", type: "equity", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "" };
+  const blank = { name: "", type: "equity", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "", yahooSymbol: "", qty: "" };
   const [form, setForm] = useState(() => {
     if (!initial) return blank;
     const isUSD = (initial.currency || "THB") === "USD";
@@ -144,7 +144,8 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
       ...initial, invested: initial.invested ?? "", investedUSD: initial.investedUSD ?? "",
       currentValue: initial.currentValue ?? "",
       currentValueUSD: isUSD && initial.currentValue ? +((initial.currentValue / rate)).toFixed(2) : "",
-      finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? ""
+      finnomenaCode: initial.finnomenaCode ?? "", units: initial.units ?? "",
+      yahooSymbol: initial.yahooSymbol ?? "", qty: initial.qty ?? ""
     };
   });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -158,6 +159,7 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
     let investedFinal = parseFloat(form.invested) || 0;
     let investedUSD = null;
     let unitsFinal = parseFloat(form.units) || 0;
+    let qtyFinal = parseFloat(form.qty) || 0;
 
     if (isUSD) {
       investedFinal = +(parseFloat(form.investedUSD || 0) * rate).toFixed(2);
@@ -168,13 +170,14 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
       investedFinal = initial.invested;
       investedUSD = initial.investedUSD;
       unitsFinal = initial.units;
+      qtyFinal = initial.qty;
     }
 
     const currentValueFinal = isUSD ? +(parseFloat(form.currentValueUSD || 0) * rate).toFixed(2) : parseFloat(form.currentValue) || 0;
 
     onSave({
       ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: currentValueFinal,
-      units: unitsFinal, finnomenaCode: form.finnomenaCode.trim()
+      units: unitsFinal, finnomenaCode: form.finnomenaCode.trim(), qty: qtyFinal, yahooSymbol: form.yahooSymbol.trim()
     });
   };
 
@@ -240,21 +243,33 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
           ))}
         </div>
       </Field>
-      {/* Finnomena section — only for non-stock-group, THB assets */}
-      {!isStockGroup && !isUSD && (
+      {/* Auto price section — for all non-stock-group assets */}
+      {!isStockGroup && (
         <div style={{ background: "#0a1628", border: `1px solid #1e3a5f`, borderRadius: 10, padding: "14px 14px 10px", marginBottom: 16 }}>
           <p style={{ margin: "0 0 10px", fontSize: 11, color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>📈 Auto Price Update (Optional)</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Fund Code / Ticker" hint="e.g. K-US500X-A">
-              <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="Leave blank to skip" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+            <Field label="Finnomena Fund Code" hint="Thai Mutual Funds">
+              <input style={inputStyle} value={form.finnomenaCode} onChange={e => set("finnomenaCode", e.target.value)} placeholder="e.g. K-US500X-A" />
             </Field>
             {hasTransactions ? (
-              <Field label="Units Held" hint="Calculated from transactions">
+              <Field label="Units Held" hint="Calculated from txs">
                 <input style={{ ...inputStyle, background: 'transparent', color: T.muted }} value={initial?.units || 0} disabled />
               </Field>
             ) : (
-              <Field label="Units Held" hint="Total units across all buys">
+              <Field label="Units Held" hint="Total fund units">
                 <input style={inputStyle} type="number" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0" />
+              </Field>
+            )}
+            <Field label="Yahoo Finance Symbol" hint="Stocks, Gold, Crypto">
+              <input style={inputStyle} value={form.yahooSymbol} onChange={e => set("yahooSymbol", e.target.value)} placeholder="e.g. GC=F or AAPL" />
+            </Field>
+            {hasTransactions ? (
+              <Field label="Qty / Shares" hint="Calculated from txs">
+                <input style={{ ...inputStyle, background: 'transparent', color: T.muted }} value={initial?.qty || 0} disabled />
+              </Field>
+            ) : (
+              <Field label="Qty / Shares" hint="Total asset qty">
+                <input style={inputStyle} type="number" value={form.qty} onChange={e => set("qty", e.target.value)} placeholder="0" />
               </Field>
             )}
           </div>
@@ -459,8 +474,10 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
   const pct = ((asset.currentValue / total) * 100).toFixed(2);
   const isUp = pl >= 0;
   const hasFinnomenaCode = !!asset.finnomenaCode?.trim();
+  const hasYahooSymbol = !!asset.yahooSymbol?.trim();
   const missingUnits = hasFinnomenaCode && !(asset.units > 0);
-  const avgCost = asset.units > 0 && asset.invested > 0 ? asset.invested / asset.units : null;
+  const missingQty = hasYahooSymbol && !(asset.qty > 0);
+  const avgCost = asset.units > 0 && asset.invested > 0 ? asset.invested / asset.units : (asset.qty > 0 && asset.invested > 0 ? asset.invested / asset.qty : null);
   const priceTs = fmtTs(asset.priceUpdatedAt || asset.navUpdatedAt);
   const isUSD = asset.currency === "USD" && !!usdThbRate;
   const usdVal = isUSD ? fmt(asset.currentValue / usdThbRate, 2) : null;
@@ -482,12 +499,13 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
             <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asset.name}</p>
             {asset.isSpeculative && <span style={{ background: "#f9731620", color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>SPEC</span>}
             {hasFinnomenaCode && !missingUnits && <span style={{ background: "#3b82f615", color: T.accent, border: `1px solid ${T.accent}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>FNOMNA</span>}
-            {missingUnits && <span title="Add units to enable auto-fetch" style={{ background: "#f9731620", color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>⚠ Set units</span>}
+            {hasYahooSymbol && !missingQty && <span style={{ background: "#10b98115", color: T.green, border: `1px solid ${T.green}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>YAHOO</span>}
+            {(missingUnits || missingQty) && <span title="Add units/qty to enable auto-fetch" style={{ background: "#f9731620", color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>⚠ Set amount</span>}
           </div>
           <p style={{ margin: "0 0 2px", fontSize: 11, color: T.muted }}>{CATEGORY_TYPES.find(c => c.value === asset.type)?.label} · {pct}% of portfolio</p>
-          {hasFinnomenaCode && (
+          {(hasFinnomenaCode || hasYahooSymbol) && (
             <p style={{ margin: "2px 0 0", fontSize: 10, color: T.dim }}>
-              {asset.finnomenaCode}{asset.units > 0 ? ` · ${fmt(asset.units, 4)} units` : ""}
+              {asset.finnomenaCode || asset.yahooSymbol}{(asset.units > 0 || asset.qty > 0) ? ` · ${fmt(asset.units || asset.qty, 4)} units` : ""}
               {avgCost ? ` · avg ฿${fmt(avgCost, 4)}/unit` : ""}
             </p>
           )}
@@ -862,6 +880,7 @@ export default function App() {
       const symbols = new Set();
       for (const a of assets) {
         if (a.finnomenaCode?.trim()) symbols.add(a.finnomenaCode.trim());
+        if (a.yahooSymbol?.trim()) symbols.add(a.yahooSymbol.trim());
         for (const sub of a.subAssets || []) {
           if (sub.yahooSymbol?.trim()) symbols.add(sub.yahooSymbol.trim());
         }
@@ -893,6 +912,12 @@ export default function App() {
           const row = cache.get(a.finnomenaCode.trim());
           const newVal = a.units > 0 ? +(a.units * row.price).toFixed(2) : a.currentValue;
           return { ...a, currentValue: newVal, navUpdatedAt: row.updated_at };
+        }
+        // Yahoo finance on a regular asset
+        if (a.yahooSymbol?.trim() && cache.has(a.yahooSymbol.trim())) {
+          const row = cache.get(a.yahooSymbol.trim());
+          const newVal = a.qty > 0 ? +(a.qty * row.price).toFixed(2) : a.currentValue;
+          return { ...a, currentValue: newVal, priceUpdatedAt: row.updated_at };
         }
         // Stock group — update sub-assets
         if ((a.subAssets || []).length > 0) {
@@ -944,6 +969,9 @@ export default function App() {
 
       if (asset.finnomenaCode?.trim()) {
         derived.units = assetTxs.reduce((s, t) => s + Number(t.units || 0), 0);
+      }
+      if (asset.yahooSymbol?.trim()) {
+        derived.qty = assetTxs.reduce((s, t) => s + Number(t.qty || 0), 0);
       }
     }
 
@@ -1037,6 +1065,32 @@ export default function App() {
           }
         } catch (e) {
           console.warn("[Cache-on-save] Finnomena fetch failed:", e.message);
+        }
+      }
+    }
+
+    // Smart cache-on-save for Yahoo top-level assets
+    if (asset.yahooSymbol?.trim() && asset.qty > 0 && supabase) {
+      const sym = asset.yahooSymbol.trim();
+      const cached = await getPriceCache([sym]);
+      if (!cached.has(sym) || isCacheStale(cached.get(sym)?.updated_at)) {
+        try {
+          const priceData = await fetchStockPrice(sym);
+          if (priceData) {
+            const fx = asset.currency === "USD" ? await fetchUSDTHBRate() : null;
+            const thbPrice = fx ? +(priceData.price * fx).toFixed(4) : priceData.price;
+            const now = new Date().toISOString();
+            await supabase.from("price_cache").upsert({
+              symbol: sym, type: asset.currency === "USD" ? "us_stock" : (asset.type === "gold" ? "commodity" : "other"),
+              price: thbPrice, currency: "THB",
+              price_date: priceData.date, source: "yahoo", updated_at: now,
+            }, { onConflict: "symbol" });
+            const newVal = +(asset.qty * thbPrice).toFixed(2);
+            setAssets(prev => prev.map(a => a.id === asset.id
+              ? { ...a, currentValue: newVal, priceUpdatedAt: now } : a));
+          }
+        } catch (e) {
+          console.warn("[Cache-on-save] Yahoo fetch failed:", e.message);
         }
       }
     }
