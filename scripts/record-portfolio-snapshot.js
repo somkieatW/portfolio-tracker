@@ -110,11 +110,16 @@ async function main() {
         }
     }
 
-    // 3. Load price_cache for all symbols
-    const symbolList = [...allSymbols].map(s => `"${s}"`).join(',');
-    const cacheRows = await sbGet(`/price_cache?symbol=in.(${symbolList})&select=symbol,price`);
-    const priceCache = new Map(cacheRows.map(r => [r.symbol, r.price]));
-    console.log(`Loaded ${priceCache.size} prices from cache`);
+    // 3. Load price_cache for all needed symbols.
+    // We fetch ALL rows and filter in JS to avoid URL encoding issues with
+    // symbols containing special chars like '&' (SCBS&P500A) or '()' (K-US500X-A(A)).
+    const allCacheRows = await sbGet('/price_cache?select=symbol,price');
+    const priceCache = new Map(
+        allCacheRows
+            .filter(r => allSymbols.has(r.symbol))
+            .map(r => [r.symbol, r.price])
+    );
+    console.log(`Loaded ${priceCache.size} prices from cache (${allCacheRows.length} total rows fetched)`);
 
     // 4. Compute snapshots per user
     const snapshotRows = [];
