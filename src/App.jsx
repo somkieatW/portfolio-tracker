@@ -817,6 +817,7 @@ export default function App() {
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotRange, setSnapshotRange] = useState(30);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const snapshotCache = useRef({});
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
@@ -1219,21 +1220,35 @@ export default function App() {
 
   const TABS = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "history", label: "📈 History" },
     { id: "assets", label: "Assets" },
-    { id: "speculative", label: "⚡ Speculation" },
+    { id: "speculative", label: "\u26a1 Speculation" },
+    { id: "history", label: "\ud83d\udcc8 History" },
     { id: "projection", label: "Projection" },
-    { id: "ai", label: "✨ AI Assistant" },
-    { id: "settings", label: "⚙ Settings" },
+    { id: "ai", label: "\u2728 AI Assistant" },
+    { id: "settings", label: "\u2699 Settings" },
   ];
 
   // Load snapshots when History tab is opened or range changes
   useEffect(() => {
     if (tab !== "history" || !userId) return;
+
+    // Check in-memory cache first so tab switches are instant
+    if (snapshotCache.current[snapshotRange]) {
+      setSnapshots(snapshotCache.current[snapshotRange]);
+      return;
+    }
+
     setSnapshotLoading(true);
     getPortfolioSnapshots(userId, snapshotRange === 0 ? null : snapshotRange)
-      .then(rows => { setSnapshots(rows); setSnapshotLoading(false); })
-      .catch(() => setSnapshotLoading(false));
+      .then(rows => {
+        snapshotCache.current[snapshotRange] = rows;
+        setSnapshots(rows);
+        setSnapshotLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load snapshots:", err);
+        setSnapshotLoading(false);
+      });
   }, [tab, userId, snapshotRange]);
 
   // ── Loading screen ──
