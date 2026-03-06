@@ -50,7 +50,7 @@ const STOCK_GROUP_TYPES = new Set(['us_stocks', 'thai_stocks']);
 function computeAssetValue(asset, priceCache) {
     const usdThb = priceCache.get('USDTHB=X') ?? 35;
 
-    // Stock group — compute from sub-assets
+    // Stock group — compute from sub-assets using live cached prices
     if (STOCK_GROUP_TYPES.has(asset.type) && Array.isArray(asset.subAssets)) {
         let total = 0;
         for (const sub of asset.subAssets) {
@@ -61,14 +61,14 @@ function computeAssetValue(asset, priceCache) {
                 const isUSD = sub.currency === 'USD';
                 total += isUSD ? qty * price * usdThb : qty * price;
             } else {
-                // Fallback: use stored currentValue
+                // Fallback: use stored currentValue for this sub-asset
                 total += Number(sub.currentValue) || 0;
             }
         }
         return total;
     }
 
-    // Fund with finnomenaCode or cached NAV
+    // Fund with finnomenaCode — apply cached NAV × units
     if (asset.finnomenaCode?.trim()) {
         const code = asset.finnomenaCode.trim();
         const nav = priceCache.get(code);
@@ -76,12 +76,8 @@ function computeAssetValue(asset, priceCache) {
         if (nav && units > 0) return units * nav;
     }
 
-    // USD asset: convert using rate
-    if (asset.currency === 'USD' && asset.currentValueUSD) {
-        return Number(asset.currentValueUSD) * usdThb;
-    }
-
-    // Fallback: use stored currentValue
+    // For all other assets (manual, forex, bonds, etc.), use the stored
+    // currentValue exactly — this matches what the frontend displays.
     return Number(asset.currentValue) || 0;
 }
 
