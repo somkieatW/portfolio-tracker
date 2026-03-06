@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Portfolio History Chart Preview</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #080c14;
+            color: #e8edf5;
+            font-family: 'Inter', system-ui, sans-serif;
+            padding: 24px;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: #e8edf5;
+        }
+
+        p.sub {
+            font-size: 12px;
+            color: #5a7090;
+            margin-bottom: 24px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .tabs button {
+            background: #131b2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 8px;
+            color: #5a7090;
+            padding: 7px 18px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all .15s;
+        }
+
+        .tabs button.active {
+            background: #1e3460;
+            border-color: #3b82f6;
+            color: #3b82f6;
+            font-weight: 700;
+        }
+
+        .card {
+            background: #131b2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 11px;
+            font-weight: 600;
+            color: #5a7090;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            background: #131b2e;
+            border: 1px solid #1e2d4a;
+            border-radius: 10px;
+            padding: 14px;
+        }
+
+        .stat .label {
+            font-size: 10px;
+            color: #5a7090;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .stat .value {
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .positive {
+            color: #22c55e;
+        }
+
+        .negative {
+            color: #ef4444;
+        }
+
+        .neutral {
+            color: #e8edf5;
+        }
+
+        canvas {
+            width: 100% !important;
+        }
+
+        .note {
+            background: #0d1829;
+            border: 1px solid #1e3a5f;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            color: #5a7090;
+            line-height: 1.6;
+        }
+
+        .note strong {
+            color: #3b82f6;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>📊 Portfolio History — Chart Preview</h1>
+    <p class="sub">Mockup with synthetic data — shows what the UI will look like with real snapshots</p>
+
+    <div class="note">
+        <strong>Strategy: Once-daily at midnight ICT (17:00 UTC)</strong><br>
+        Every snapshot is keyed to a <code>DATE</code>. If a duplicate date is detected (e.g. manual re-run), only the
+        <strong>latest row per calendar date</strong> is used for the chart — so irregular or extra snapshots never
+        cause chart noise.
+    </div>
+
+    <div class="tabs">
+        <button class="active" onclick="render('7d', this)">7 Days</button>
+        <button onclick="render('30d', this)">30 Days</button>
+        <button onclick="render('1y', this)">1 Year</button>
+    </div>
+
+    <div id="stats-7d" class="stats"></div>
+    <div id="stats-30d" class="stats" style="display:none"></div>
+    <div id="stats-1y" class="stats" style="display:none"></div>
+
+    <div class="card">
+        <h2>Net Worth (฿)</h2>
+        <canvas id="chart" height="280"></canvas>
+    </div>
+
+    <div class="card">
+        <h2>Daily P&amp;L (฿ change from prev day)</h2>
+        <canvas id="pnlChart" height="160"></canvas>
+    </div>
+
+    <script>
+        // ── Synthetic data generator ────────────────────────────────────────────────
+        function generateData(days) {
+            const data = [];
+            const now = new Date('2026-03-06T17:00:00Z'); // midnight ICT = 17:00 UTC
+            let val = 42000; // starting net worth ฿42,000
+            let invested = 38000;
+
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(now);
+                d.setUTCDate(d.getUTCDate() - i);
+                const label = d.toISOString().slice(0, 10);
+
+                // Simulate realistic daily drift: small ±vol, occasional DCA bump
+                const dailyChange = (Math.random() - 0.48) * 600;  // slight upward bias
+                val = Math.max(val + dailyChange, invested * 0.85); // floor at 85% of invested
+
+                // Monthly DCA bump: add 3000 roughly every 30 days
+                if (i % 30 === 0 && i > 0) { val += 3000; invested += 3000; }
+
+                data.push({ date: label, net_worth_thb: Math.round(val), invested });
+            }
+            return data;
+        }
+
+        const datasets = {
+            '7d': generateData(7),
+            '30d': generateData(30),
+            '1y': generateData(365),
+        };
+
+        // ── Compute range stats ─────────────────────────────────────────────────────
+        function computeStats(data) {
+            const first = data[0].net_worth_thb;
+            const last = data[data.length - 1].net_worth_thb;
+            const invested = data[data.length - 1].invested;
+            const change = last - first;
+            const changePct = ((change / first) * 100).toFixed(2);
+            const overallPL = last - invested;
+            const overallPct = ((overallPL / invested) * 100).toFixed(2);
+            return { first, last, change, changePct, invested, overallPL, overallPct };
+        }
+
+        function fmt(n) { return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+        function renderStats(id, data) {
+            const { last, change, changePct, overallPL, overallPct } = computeStats(data);
+            const days = data.length;
+            document.getElementById(id).innerHTML = `
+        <div class="stat"><div class="label">Current Net Worth</div><div class="value neutral">฿${fmt(last)}</div></div>
+        <div class="stat"><div class="label">Change (${days}d)</div><div class="value ${change >= 0 ? 'positive' : 'negative'}">${change >= 0 ? '+' : ''}฿${fmt(change)} (${changePct}%)</div></div>
+        <div class="stat"><div class="label">Overall P&L</div><div class="value ${overallPL >= 0 ? 'positive' : 'negative'}">${overallPL >= 0 ? '+' : ''}฿${fmt(overallPL)} (${overallPct}%)</div></div>
+      `;
+        }
+
+        // Pre-render all stats
+        renderStats('stats-7d', datasets['7d']);
+        renderStats('stats-30d', datasets['30d']);
+        renderStats('stats-1y', datasets['1y']);
+
+        // ── Chart.js rendering ──────────────────────────────────────────────────────
+        let chart = null;
+        let pnlChart = null;
+
+        function render(range, btn) {
+            document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            ['7d', '30d', '1y'].forEach(r => {
+                document.getElementById(`stats-${r}`).style.display = r === range ? 'grid' : 'none';
+            });
+
+            const data = datasets[range];
+            const labels = data.length > 60
+                ? data.filter((_, i) => i % Math.ceil(data.length / 24) === 0 || i === data.length - 1).map(d => d.date)
+                : data.map(d => d.date);
+            const values = data.map(d => d.net_worth_thb);
+
+            // Daily PnL bar data
+            const pnlValues = data.map((d, i) => i === 0 ? 0 : d.net_worth_thb - data[i - 1].net_worth_thb);
+            const pnlColors = pnlValues.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+
+            const sharedGridOpts = {
+                color: '#1e2d4a',
+            };
+            const sharedTickOpts = {
+                color: '#5a7090',
+                font: { size: 10, family: 'Inter, system-ui, sans-serif' },
+            };
+
+            if (chart) chart.destroy();
+            if (pnlChart) pnlChart.destroy();
+
+            chart = new Chart(document.getElementById('chart'), {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'Net Worth (฿)',
+                        data: values,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.10)',
+                        fill: true,
+                        borderWidth: 2,
+                        pointRadius: data.length > 60 ? 0 : 3,
+                        pointBackgroundColor: '#3b82f6',
+                        tension: 0.3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#131b2e',
+                            borderColor: '#1e2d4a',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: ctx => ` ฿${fmt(ctx.raw)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: sharedGridOpts, ticks: { ...sharedTickOpts, maxTicksLimit: 8 } },
+                        y: { grid: sharedGridOpts, ticks: { ...sharedTickOpts, callback: v => '฿' + (v / 1000).toFixed(0) + 'k' } }
+                    }
+                }
+            });
+
+            pnlChart = new Chart(document.getElementById('pnlChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'Daily Change (฿)',
+                        data: pnlValues,
+                        backgroundColor: pnlColors,
+                        borderRadius: 3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#131b2e',
+                            borderColor: '#1e2d4a',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: ctx => ` ${ctx.raw >= 0 ? '+' : ''}฿${fmt(ctx.raw)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: sharedGridOpts, ticks: { ...sharedTickOpts, maxTicksLimit: 8 } },
+                        y: { grid: sharedGridOpts, ticks: { ...sharedTickOpts, callback: v => (v >= 0 ? '+' : '') + '฿' + v } }
+                    }
+                }
+            });
+        }
+
+        // Initial render
+        render('7d', document.querySelector('.tabs button'));
+    </script>
+</body>
+
+</html>

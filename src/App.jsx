@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
-import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, deleteTransaction } from "./supabase.js";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, deleteTransaction, getPortfolioSnapshots } from "./supabase.js";
 import Auth from "./Auth.jsx";
 import AIChat from "./AIChat.jsx";
 import { fetchCurrentNAV } from "./finnomenaService.js";
@@ -813,6 +813,10 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [tab, setTab] = useState("dashboard");
   const [modal, setModal] = useState(null);
+  // History tab state
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotRange, setSnapshotRange] = useState(30);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadStatus, setLoadStatus] = useState("loading"); // loading | ready | error
@@ -1215,12 +1219,22 @@ export default function App() {
 
   const TABS = [
     { id: "dashboard", label: "Dashboard" },
+    { id: "history", label: "📈 History" },
     { id: "assets", label: "Assets" },
     { id: "speculative", label: "⚡ Speculation" },
     { id: "projection", label: "Projection" },
     { id: "ai", label: "✨ AI Assistant" },
     { id: "settings", label: "⚙ Settings" },
   ];
+
+  // Load snapshots when History tab is opened or range changes
+  useEffect(() => {
+    if (tab !== "history" || !userId) return;
+    setSnapshotLoading(true);
+    getPortfolioSnapshots(userId, snapshotRange === 0 ? null : snapshotRange)
+      .then(rows => { setSnapshots(rows); setSnapshotLoading(false); })
+      .catch(() => setSnapshotLoading(false));
+  }, [tab, userId, snapshotRange]);
 
   // ── Loading screen ──
   if (isAuthLoading || (userId && loadStatus === "loading")) {
@@ -1544,6 +1558,110 @@ export default function App() {
             <p style={{ fontSize: 11, color: T.dim, marginTop: 14, lineHeight: 1.7, textAlign: "center" }}>Assumes ~10% annual return. Past performance ≠ future results. Not financial advice.</p>
           </div>
         )}
+
+        {/* HISTORY */}
+        {tab === "history" && (() => {
+          const RANGES = [
+            { label: "7D", days: 7 },
+            { label: "30D", days: 30 },
+            { label: "90D", days: 90 },
+            { label: "1Y", days: 365 },
+            { label: "All", days: 0 },
+          ];
+          const firstVal = snapshots[0]?.net_worth_thb ?? 0;
+          const lastVal = snapshots[snapshots.length - 1]?.net_worth_thb ?? 0;
+          const change = lastVal - firstVal;
+          const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
+          const pnlColor = change >= 0 ? T.green : T.red;
+
+          const pnlData = snapshots.map((s, i) => ({
+            date: s.snapshot_date,
+            value: s.net_worth_thb,
+            pnl: i === 0 ? 0 : +(s.net_worth_thb - snapshots[i - 1].net_worth_thb).toFixed(2),
+          }));
+
+          return (
+            <div>
+              {/* Range selector */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                {RANGES.map(r => (
+                  <button key={r.label} onClick={() => setSnapshotRange(r.days)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${snapshotRange === r.days ? T.accent : T.border}`, background: snapshotRange === r.days ? T.accentGlow : "transparent", color: snapshotRange === r.days ? T.accent : T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: snapshotRange === r.days ? 700 : 400 }}>{r.label}</button>
+                ))}
+              </div>
+
+              {snapshotLoading && (
+                <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>Loading history…</div>
+              )}
+
+              {!snapshotLoading && snapshots.length === 0 && (
+                <div style={{ textAlign: "center", padding: 40, color: T.muted }}>
+                  <p style={{ fontSize: 32, marginBottom: 12 }}>📊</p>
+                  <p>No snapshot data yet. Snapshots are recorded automatically at midnight ICT each day.</p>
+                  <p style={{ fontSize: 12, marginTop: 8, color: T.dim }}>You can also trigger the GitHub Action manually to create today's first snapshot.</p>
+                </div>
+              )}
+
+              {!snapshotLoading && snapshots.length > 0 && (
+                <>
+                  {/* Stats */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    {[
+                      { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+                      { label: "Change", value: `${change >= 0 ? "+" : ""}฿${fmt(change)}`, color: pnlColor },
+                      { label: `Return (${RANGES.find(r => r.days === snapshotRange)?.label ?? "All"})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
+                    ].map(s => (
+                      <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                        <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
+                        <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Net Worth Chart */}
+                  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
+                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Net Worth</p>
+                    <ResponsiveContainer width="100%" height={210}>
+                      <AreaChart data={pnlData}>
+                        <defs>
+                          <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={T.accent} stopOpacity={0.3} />
+                            <stop offset="100%" stopColor={T.accent} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
+                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
+                        <Tooltip formatter={v => [`฿${fmt(v)}`, "Net Worth"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
+                        <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#histGrad)" strokeWidth={2} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Daily PnL Chart */}
+                  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px" }}>
+                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Daily P&amp;L</p>
+                    <ResponsiveContainer width="100%" height={140}>
+                      <BarChart data={pnlData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
+                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
+                        <Tooltip formatter={v => [`${v >= 0 ? "+" : ""}฿${fmt(Math.abs(v))}`, "Daily Change"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
+                        <Bar dataKey="pnl" radius={[3, 3, 0, 0]}
+                          fill={T.green}
+                          label={false}
+                          isAnimationActive={false}>
+                          {pnlData.map((d, i) => (
+                            <Cell key={i} fill={d.pnl >= 0 ? T.green : T.red} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* AI ASSISTANT */}
         {tab === "ai" && (

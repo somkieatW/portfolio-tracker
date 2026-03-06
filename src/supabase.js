@@ -129,3 +129,28 @@ export async function deleteTransaction(id) {
   return true;
 }
 
+// ─── Portfolio Snapshot Helpers ───────────────────────────────────────────────
+
+/**
+ * Load daily portfolio snapshots for a user, ordered newest-first.
+ * @param {string} userId
+ * @param {number|null} days — if null, returns all rows
+ */
+export async function getPortfolioSnapshots(userId, days = null) {
+  if (!supabase || !userId) return [];
+  let q = supabase
+    .from('portfolio_snapshots')
+    .select('snapshot_date, net_worth_thb, total_invest_thb, total_spec_thb')
+    .eq('user_id', userId)
+    .order('snapshot_date', { ascending: true });
+
+  if (days) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    q = q.gte('snapshot_date', since.toISOString().slice(0, 10));
+  }
+
+  const { data, error } = await q;
+  if (error) { console.warn('[Snapshots] load error:', error.message); return []; }
+  return data || [];
+}

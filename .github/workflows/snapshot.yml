@@ -1,0 +1,32 @@
+name: Record Portfolio Snapshot
+
+on:
+  schedule:
+    - cron: '0 17 * * *'   # 17:00 UTC = 00:00 ICT (midnight Bangkok time)
+  workflow_dispatch:         # allow manual trigger from GitHub Actions tab
+
+jobs:
+  snapshot:
+    name: Update prices then record portfolio snapshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Step 1 — Refresh price cache
+        run: node scripts/update-price-cache.js
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      - name: Step 2 — Record portfolio snapshot
+        run: node scripts/record-portfolio-snapshot.js
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
