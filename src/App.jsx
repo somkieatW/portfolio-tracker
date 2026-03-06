@@ -1219,11 +1219,11 @@ export default function App() {
   };
 
   const TABS = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "assets", label: "Assets" },
+    { id: "dashboard", label: "\ud83c\udfe0 Dashboard" },
+    { id: "assets", label: "\ud83d\udcbc Assets" },
     { id: "speculative", label: "\u26a1 Speculation" },
     { id: "history", label: "\ud83d\udcc8 History" },
-    { id: "projection", label: "Projection" },
+    { id: "projection", label: "\ud83d\udd2e Projection" },
     { id: "ai", label: "\u2728 AI Assistant" },
     { id: "settings", label: "\u2699 Settings" },
   ];
