@@ -390,10 +390,50 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
 }
 
 // ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
-function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, isUSD }) {
+function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, isUSD, snapshots }) {
   const name = subAsset ? subAsset.name : asset.name;
+  const targetId = subAsset ? subAsset.id : asset.id;
+
+  // Extract snapshot data for this specific asset
+  const chartData = (snapshots || []).map(snap => {
+    // Find the specific asset in the snapshot's breakdown
+    const assetData = (snap.asset_breakdown || []).find(a => a.id === targetId);
+    return {
+      date: snap.snapshot_date,
+      value: assetData ? assetData.currentValue : 0,
+      invested: assetData ? assetData.invested : 0,
+    };
+  }).filter(d => d.value > 0 || d.invested > 0); // Hide days before asset existed
+
   return (
     <Modal title={`History — ${name}`} onClose={onClose}>
+      {chartData.length > 0 ? (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 16 }}>
+          <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Value vs Invested</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="assetValGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={T.accent} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={T.accent} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+              <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
+              <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
+              <Tooltip formatter={(v, n) => [`฿${fmt(v)}`, n === 'value' ? 'Current Value' : 'Invested']} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
+              <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#assetValGrad)" strokeWidth={2} dot={false} />
+              <Area type="step" dataKey="invested" stroke={T.muted} fill="transparent" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div style={{ padding: "30px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13, color: T.muted, textAlign: "center", marginBottom: 16 }}>
+          No snapshot history available for this asset yet.
+        </div>
+      )}
+
+      {/* KEEPING OLD CODE COMMENTED OUT AS REQUESTED 
       {!transactions?.length ? (
         <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 12, color: T.muted, textAlign: "center" }}>
           No transactions recorded yet.
@@ -431,6 +471,7 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
           </div>
         </div>
       )}
+      */}
     </Modal>
   );
 }
@@ -1786,6 +1827,7 @@ export default function App() {
           transactions={historyModal.subAsset
             ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
             : transactions.filter(t => t.asset_id === historyModal.asset.id)}
+          snapshots={snapshots}
           onDelete={deleteTx}
           isUSD={historyModal.isUSD}
           onClose={() => setHistoryModal(null)}
