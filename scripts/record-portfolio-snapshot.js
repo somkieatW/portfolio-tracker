@@ -34,8 +34,9 @@ async function sbGet(path) {
     return res.json();
 }
 
-async function sbUpsert(table, rows) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+async function sbUpsert(table, rows, onConflict = null) {
+    const qs = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${qs}`, {
         method: 'POST',
         headers: { ...sbHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify(rows),
@@ -159,9 +160,9 @@ async function main() {
         console.log(`  User ${row.user_id.slice(0, 8)}… → ฿${(totalInvest + totalSpec).toFixed(2)} (invest=฿${totalInvest.toFixed(2)}, spec=฿${totalSpec.toFixed(2)})`);
     }
 
-    // 5. Upsert (one per user per day — conflict replaces)
+    // 5. Upsert — conflict target is (user_id, snapshot_date) to allow re-runs
     if (snapshotRows.length > 0) {
-        await sbUpsert('portfolio_snapshots', snapshotRows);
+        await sbUpsert('portfolio_snapshots', snapshotRows, 'user_id,snapshot_date');
         console.log(`\n✓ Upserted ${snapshotRows.length} snapshot(s) for ${snapshotDate}`);
     } else {
         console.log('No portfolios to snapshot.');
