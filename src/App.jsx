@@ -576,7 +576,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
         {[
           { label: "💰 + Invst", onClick: onAddInvestment, color: T.green },
           { label: "✏️ Edit", onClick: onEdit, color: T.muted },
-          { label: `📜 History (${transactions?.length || 0})`, onClick: onShowHistory, color: T.text },
+          { label: "📜 History", onClick: onShowHistory, color: T.text },
           { label: "🗑", onClick: onDelete, color: T.red },
         ].map(btn => (
           <button key={btn.label} onClick={btn.onClick} style={{ flex: btn.label === "🗑" ? 0 : 1, minWidth: btn.label === "🗑" ? 36 : 0, padding: "7px 0", borderRadius: 8, border: `1px solid ${btn.color}44`, background: `${btn.color}11`, color: btn.color, cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>{btn.label}</button>
@@ -1269,9 +1269,9 @@ export default function App() {
     { id: "settings", label: "\u2699 Settings" },
   ];
 
-  // Load snapshots when History tab is opened or range changes
+  // Load snapshots when History tab or modal is opened, or range changes
   useEffect(() => {
-    if (tab !== "history" || !userId) return;
+    if ((tab !== "history" && !historyModal) || !userId) return;
 
     // Check in-memory cache first so tab switches are instant
     if (snapshotCache.current[snapshotRange]) {
