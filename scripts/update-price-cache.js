@@ -60,6 +60,11 @@ async function discoverSymbols() {
             if (asset.finnomenaCode?.trim()) {
                 fundsSet.add(asset.finnomenaCode.trim());
             }
+            // Top-level Yahoo symbol (e.g., Gold, Crypto, standalone stocks)
+            if (asset.yahooSymbol?.trim()) {
+                const type = asset.currency === 'USD' ? 'us_stock' : (asset.type === 'gold' ? 'commodity' : 'other');
+                yahooSymbols.set(asset.yahooSymbol.trim(), type);
+            }
             // Sub-assets inside stock groups
             for (const sub of asset.subAssets || []) {
                 if (sub.yahooSymbol?.trim()) {
