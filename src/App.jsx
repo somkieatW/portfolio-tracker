@@ -1124,9 +1124,28 @@ export default function App() {
   })();
 
   const saveAsset = async (asset) => {
+    // Check if this is a brand new asset creation
+    const isNew = !assets.find(a => a.id === asset.id);
+
     // Persist the asset immediately
-    setAssets(prev => prev.find(a => a.id === asset.id) ? prev.map(a => a.id === asset.id ? asset : a) : [...prev, asset]);
+    setAssets(prev => isNew ? [...prev, asset] : prev.map(a => a.id === asset.id ? asset : a));
     setModal(null); setEditingAsset(null);
+
+    // Auto-generate initial buy transaction if new and has an investment baseline
+    if (isNew && parseFloat(asset.invested || 0) > 0) {
+      await saveTransaction({
+        asset_id: asset.id,
+        sub_asset_id: null,
+        type: 'buy',
+        currency: asset.currency || 'THB',
+        date: new Date().toISOString().split('T')[0],
+        amount_thb: asset.currency === 'USD' ? null : parseFloat(asset.invested || 0),
+        amount_usd: asset.currency === 'USD' ? parseFloat(asset.investedUSD || 0) : null,
+        units: parseFloat(asset.units || 0),
+        qty: parseFloat(asset.qty || 0),
+        notes: '[System] Initial Setup Investment'
+      });
+    }
 
     // Smart cache-on-save: if finnomenaCode set and not yet cached, try to fetch + cache it
     if (asset.finnomenaCode?.trim() && supabase) {
@@ -1198,15 +1217,35 @@ export default function App() {
   const closeSub = () => { setSubModal(null); setActiveGroupId(null); setEditingSubAsset(null); };
 
   const saveSubAsset = async (sub) => {
+    let isNew = false;
+
     setAssets(prev => prev.map(a => {
       if (a.id !== activeGroupId) return a;
       const existing = (a.subAssets || []).find(s => s.id === sub.id);
+      if (!existing) isNew = true;
+
       const subAssets = existing
         ? (a.subAssets || []).map(s => s.id === sub.id ? sub : s)
         : [...(a.subAssets || []), sub];
       return { ...a, subAssets };
     }));
     closeSub();
+
+    // Auto-generate initial buy transaction if new and has an investment baseline
+    if (isNew && parseFloat(sub.invested || 0) > 0) {
+      await saveTransaction({
+        asset_id: activeGroupId,
+        sub_asset_id: sub.id,
+        type: 'buy',
+        currency: sub.currency || 'THB',
+        date: new Date().toISOString().split('T')[0],
+        amount_thb: sub.currency === 'USD' ? null : parseFloat(sub.invested || 0),
+        amount_usd: sub.currency === 'USD' ? parseFloat(sub.investedUSD || 0) : null,
+        units: null, // Sub-assets are distinct units of stocks
+        qty: parseFloat(sub.qty || 0),
+        notes: '[System] Initial Setup Investment'
+      });
+    }
 
     // Smart cache-on-save for Yahoo stocks
     if (sub.yahooSymbol?.trim() && sub.qty > 0 && supabase) {
