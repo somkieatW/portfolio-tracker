@@ -1006,7 +1006,7 @@ export default function App() {
     let derived = { ...asset };
 
     // Top-level asset (e.g. fund, crypto, generic stock)
-    const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id && t.type === 'buy');
+    const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id && (t.type === 'buy' || t.type === 'sell'));
     if (assetTxs.length > 0) {
       const invThb = assetTxs.reduce((s, t) => s + Number(t.amount_thb || 0), 0);
       const isUSD = asset.currency === "USD";
@@ -1026,7 +1026,7 @@ export default function App() {
     // Sub-assets (e.g. inside US Stocks / Thai Stocks groups)
     if (derived.subAssets?.length > 0) {
       derived.subAssets = derived.subAssets.map(sub => {
-        const subTxs = transactions.filter(t => t.asset_id === asset.id && t.sub_asset_id === sub.id && t.type === 'buy');
+        const subTxs = transactions.filter(t => t.asset_id === asset.id && t.sub_asset_id === sub.id && (t.type === 'buy' || t.type === 'sell'));
         if (subTxs.length === 0) return sub; // fallback to manual if no txs
 
         const invThb = subTxs.reduce((s, t) => s + Number(t.amount_thb || 0), 0);
