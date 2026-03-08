@@ -473,7 +473,6 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
         </div>
       )}
 
-      {/* KEEPING OLD CODE COMMENTED OUT AS REQUESTED 
       {!transactions?.length ? (
         <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 12, color: T.muted, textAlign: "center" }}>
           No transactions recorded yet.
@@ -511,7 +510,6 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
           </div>
         </div>
       )}
-      */}
     </Modal>
   );
 }
