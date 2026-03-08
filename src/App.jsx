@@ -80,6 +80,46 @@ function normalizeAssets(assets) {
   });
 }
 
+// Computes derived totals proportionally reducing invested capital based on units sold
+function calcDerivedTotals(txs, isUSD) {
+  const sorted = [...txs].sort((a, b) => new Date(a.date) - new Date(b.date) || new Date(a.created_at) - new Date(b.created_at));
+
+  let invThb = 0;
+  let invUsd = isUSD ? 0 : null;
+  let totalUnits = 0;
+  let totalQty = 0;
+
+  for (const t of sorted) {
+    if (t.type === 'buy') {
+      invThb += Number(t.amount_thb || 0);
+      if (isUSD) invUsd += Number(t.amount_usd || 0);
+      totalUnits += Number(t.units || 0);
+      totalQty += Number(t.qty || 0);
+    } else if (t.type === 'sell') {
+      const sellUnits = Math.abs(Number(t.units || 0));
+      const sellQty = Math.abs(Number(t.qty || 0));
+
+      if (totalUnits > 0 && sellUnits > 0) {
+        // Average cost for funds
+        const ratio = sellUnits / totalUnits;
+        invThb -= invThb * ratio;
+        totalUnits -= sellUnits;
+      } else if (totalQty > 0 && sellQty > 0) {
+        // Average cost for stocks/gold
+        const ratio = sellQty / totalQty;
+        invThb -= invThb * ratio;
+        if (isUSD) invUsd -= invUsd * ratio;
+        totalQty -= sellQty;
+      } else {
+        // Pure cash withdrawal
+        invThb -= Math.abs(Number(t.amount_thb || 0));
+        if (isUSD) invUsd -= Math.abs(Number(t.amount_usd || 0));
+      }
+    }
+  }
+  return { invThb, invUsd, totalUnits, totalQty };
+}
+
 
 // ─── SAVE INDICATOR ───────────────────────────────────────────────────────────
 function SaveBadge({ status }) {
@@ -1008,18 +1048,17 @@ export default function App() {
     // Top-level asset (e.g. fund, crypto, generic stock)
     const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id && (t.type === 'buy' || t.type === 'sell'));
     if (assetTxs.length > 0) {
-      const invThb = assetTxs.reduce((s, t) => s + Number(t.amount_thb || 0), 0);
       const isUSD = asset.currency === "USD";
-      const invUsd = isUSD ? assetTxs.reduce((s, t) => s + Number(t.amount_usd || 0), 0) : null;
+      const { invThb, invUsd, totalUnits, totalQty } = calcDerivedTotals(assetTxs, isUSD);
 
       derived.invested = invThb;
       if (isUSD) derived.investedUSD = invUsd;
 
       if (asset.finnomenaCode?.trim()) {
-        derived.units = assetTxs.reduce((s, t) => s + Number(t.units || 0), 0);
+        derived.units = totalUnits;
       }
       if (asset.yahooSymbol?.trim()) {
-        derived.qty = assetTxs.reduce((s, t) => s + Number(t.qty || 0), 0);
+        derived.qty = totalQty;
       }
     }
 
@@ -1029,11 +1068,10 @@ export default function App() {
         const subTxs = transactions.filter(t => t.asset_id === asset.id && t.sub_asset_id === sub.id && (t.type === 'buy' || t.type === 'sell'));
         if (subTxs.length === 0) return sub; // fallback to manual if no txs
 
-        const invThb = subTxs.reduce((s, t) => s + Number(t.amount_thb || 0), 0);
-        const invUsd = sub.currency === 'USD' ? subTxs.reduce((s, t) => s + Number(t.amount_usd || 0), 0) : null;
-        const qty = subTxs.reduce((s, t) => s + Number(t.qty || 0), 0);
+        const isUSD = sub.currency === 'USD';
+        const { invThb, invUsd, totalQty } = calcDerivedTotals(subTxs, isUSD);
 
-        return { ...sub, invested: invThb, investedUSD: invUsd, qty };
+        return { ...sub, invested: invThb, investedUSD: invUsd, qty: totalQty };
       });
     }
 
