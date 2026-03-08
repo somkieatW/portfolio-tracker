@@ -82,7 +82,25 @@ function normalizeAssets(assets) {
 
 // Computes derived totals proportionally reducing invested capital based on units sold
 function calcDerivedTotals(txs, isUSD) {
-  const sorted = [...txs].sort((a, b) => new Date(a.date) - new Date(b.date) || new Date(a.created_at) - new Date(b.created_at));
+  const sorted = [...txs].sort((a, b) => {
+    // 1. Primary order by explicitly configured Date
+    const dateDiff = new Date(a.date) - new Date(b.date);
+    if (dateDiff !== 0) return dateDiff;
+
+    // 2. If on the same Date, [System Backfill] MUST be processed before anything else 
+    const aIsBackfill = a.notes?.includes('[System Backfill]');
+    const bIsBackfill = b.notes?.includes('[System Backfill]');
+    if (aIsBackfill && !bIsBackfill) return -1;
+    if (!aIsBackfill && bIsBackfill) return 1;
+
+    // 3. If on the same date, Buys generally process before Sells 
+    // to prevent math crashing into 0 baseline counts during sequential loops
+    if (a.type === 'buy' && b.type === 'sell') return -1;
+    if (a.type === 'sell' && b.type === 'buy') return 1;
+
+    // 4. Fallback to native Creation timestamp
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
 
   let invThb = 0;
   let invUsd = isUSD ? 0 : null;
@@ -1052,10 +1070,20 @@ export default function App() {
       derived.invested = invThb;
       if (isUSD) derived.investedUSD = invUsd;
 
-      if (asset.finnomenaCode?.trim()) {
+      // Dynamically adjust currentValue matching the new derived unit count
+      // using the original price-per-unit from the base asset configuration
+      if (asset.units > 0 && asset.currentValue !== undefined) {
+        const unitPrice = asset.currentValue / asset.units;
+        derived.currentValue = +(totalUnits * unitPrice).toFixed(2);
+      } else if (asset.qty > 0 && asset.currentValue !== undefined) {
+        const unitPrice = asset.currentValue / asset.qty;
+        derived.currentValue = +(totalQty * unitPrice).toFixed(2);
+      }
+
+      if (asset.finnomenaCode?.trim() || asset.units > 0) {
         derived.units = totalUnits;
       }
-      if (asset.yahooSymbol?.trim()) {
+      if (asset.yahooSymbol?.trim() || asset.qty > 0) {
         derived.qty = totalQty;
       }
     }
@@ -1069,7 +1097,13 @@ export default function App() {
         const isUSD = sub.currency === 'USD';
         const { invThb, invUsd, totalQty } = calcDerivedTotals(subTxs, isUSD);
 
-        return { ...sub, invested: invThb, investedUSD: invUsd, qty: totalQty };
+        let newCurrentValue = sub.currentValue;
+        if (sub.qty > 0 && sub.currentValue !== undefined) {
+          const unitPrice = sub.currentValue / sub.qty;
+          newCurrentValue = +(totalQty * unitPrice).toFixed(2);
+        }
+
+        return { ...sub, invested: invThb, investedUSD: invUsd, qty: totalQty, currentValue: newCurrentValue };
       });
     }
 
@@ -1854,12 +1888,12 @@ export default function App() {
       {/* ── MODALS ── */}
       {modal === "add" && (
         <Modal title="Add New Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
+          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={false} />
         </Modal>
       )}
       {modal === "edit" && editingAsset && (
         <Modal title="Edit Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} />
+          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={transactions.some(t => t.asset_id === editingAsset.id && !t.sub_asset_id)} />
         </Modal>
       )}
       {modal === "update" && editingAsset && (
@@ -1869,12 +1903,12 @@ export default function App() {
       {/* ── SUB-ASSET MODALS (for stock groups) ── */}
       {subModal === "add" && (
         <Modal title="Add Stock to Group" onClose={closeSub}>
-          <StockSubForm usdThbRate={usdThbRate} onSave={saveSubAsset} onClose={closeSub} />
+          <StockSubForm usdThbRate={usdThbRate} onSave={saveSubAsset} onClose={closeSub} hasTransactions={false} />
         </Modal>
       )}
       {subModal === "edit" && editingSubAsset && (
         <Modal title={`Edit — ${editingSubAsset.name}`} onClose={closeSub}>
-          <StockSubForm usdThbRate={usdThbRate} initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} />
+          <StockSubForm usdThbRate={usdThbRate} initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} hasTransactions={transactions.some(t => t.asset_id === activeGroupId && t.sub_asset_id === editingSubAsset.id)} />
         </Modal>
       )}
       {subModal === "update" && editingSubAsset && (
