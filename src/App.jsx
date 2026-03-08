@@ -1222,9 +1222,9 @@ export default function App() {
       setSaveStatus("saving");
       let createdTx = tx;
       if (supabase) {
-        createdTx = await addTransaction(tx);
+        createdTx = await addTransaction({ ...tx, user_id: userId });
       } else {
-        createdTx = { ...tx, id: uid() };
+        createdTx = { ...tx, user_id: userId, id: uid() };
       }
       if (createdTx) {
         setTransactions(prev => [createdTx, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
