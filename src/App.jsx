@@ -1960,7 +1960,7 @@ export default function App() {
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                         <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
-                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
+                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} domain={['dataMin - 500', 'dataMax + 500']} />
                         <Tooltip formatter={v => [`฿${fmt(v)}`, "Net Worth"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
                         <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#histGrad)" strokeWidth={2} dot={false} />
                       </AreaChart>
