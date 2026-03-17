@@ -1029,6 +1029,32 @@ function PnLTooltip({ active, payload }) {
   );
 }
 
+// Custom Candle component for History chart
+const Candle = (props) => {
+  const { x, y, width, height, open, close, high, low, color } = props;
+  const isUp = close >= open;
+  const candleColor = color || (isUp ? T.green : T.red);
+
+  const xc = x + width / 2;
+
+  // Robust coordinate calculation for wicks
+  // We use the Bar's y and height which already map to [open, close]
+  const bodyMax = Math.max(open, close);
+  const bodyMin = Math.min(open, close);
+  const bodyRange = Math.max(0.01, Math.abs(bodyMax - bodyMin));
+  const pxPerUnit = height / bodyRange;
+
+  const highY = y - (high - bodyMax) * pxPerUnit;
+  const lowY = y + height + (bodyMin - low) * pxPerUnit;
+
+  return (
+    <g>
+      <line x1={xc} y1={lowY} x2={xc} y2={highY} stroke={candleColor} strokeWidth={1.5} />
+      <rect x={x} y={y} width={width} height={Math.max(1, height)} fill={candleColor} />
+    </g>
+  );
+};
+
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
@@ -2006,13 +2032,15 @@ export default function App() {
 
                         <Bar
                           dataKey={(d) => [d.open, d.close]}
-                          shape={(props) => {
-                            const { payload, background, yAxis } = props;
-                            const [min, max] = yAxis.domain;
-                            const h = background.y + (background.height * (1 - (payload.high - min) / (max - min)));
-                            const l = background.y + (background.height * (1 - (payload.low - min) / (max - min)));
-                            return <Candle {...props} open={payload.open} close={payload.close} high={h} low={l} />;
-                          }}
+                          shape={(props) => (
+                            <Candle
+                              {...props}
+                              open={props.payload.open}
+                              close={props.payload.close}
+                              high={props.payload.high}
+                              low={props.payload.low}
+                            />
+                          )}
                         />
                       </ComposedChart>
                     </ResponsiveContainer>
