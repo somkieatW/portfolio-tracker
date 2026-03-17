@@ -150,7 +150,7 @@ export async function getPortfolioSnapshots(userId, days = null) {
   if (!supabase || !userId) return [];
   let q = supabase
     .from('portfolio_snapshots')
-    .select('snapshot_date, net_worth_thb, total_invest_thb, total_spec_thb')
+    .select('snapshot_date, net_worth_thb, total_invest_thb, total_spec_thb, o_invest_thb, h_invest_thb, l_invest_thb')
     .eq('user_id', userId)
     .order('snapshot_date', { ascending: true });
 

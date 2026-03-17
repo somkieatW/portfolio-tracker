@@ -118,7 +118,12 @@ async function main() {
     );
     console.log(`Loaded ${priceCache.size} prices from cache (${allCacheRows.length} total rows fetched)`);
 
-    // 4. Compute snapshots per user
+    // 4. Load existing snapshots for today (ICT) to handle OHLC updates
+    const existingDaySnapshots = await sbGet(`/portfolio_snapshots?snapshot_date=eq.${snapshotDate}`);
+    const existingSnapMap = new Map(existingDaySnapshots.map(s => [s.user_id, s]));
+    console.log(`Loaded ${existingDaySnapshots.length} existing snapshot(s) for today to handle OHLC updates.`);
+
+    // 5. Compute snapshots per user
     const snapshotRows = [];
     for (const row of portfolios) {
         const assets = Array.isArray(row.assets) ? row.assets : [];
@@ -147,20 +152,34 @@ async function main() {
             }
         }
 
+        const currentVal = +totalInvest.toFixed(2);
+        const existing = existingSnapMap.get(row.user_id);
+
+        let o = currentVal, h = currentVal, l = currentVal;
+        if (existing) {
+            // Keep original Open, update High/Low
+            o = Number(existing.o_invest_thb) || currentVal;
+            h = Math.max(Number(existing.h_invest_thb) || currentVal, currentVal);
+            l = Math.min(Number(existing.l_invest_thb) || currentVal, currentVal);
+        }
+
         snapshotRows.push({
             user_id: row.user_id,
             snapshot_at: now.toISOString(),
             snapshot_date: snapshotDate,
-            total_invest_thb: +totalInvest.toFixed(2),
+            total_invest_thb: currentVal,
             total_spec_thb: +totalSpec.toFixed(2),
-            net_worth_thb: +(totalInvest + totalSpec).toFixed(2),
+            net_worth_thb: +(currentVal + totalSpec).toFixed(2),
             asset_breakdown: breakdown,
+            o_invest_thb: o,
+            h_invest_thb: h,
+            l_invest_thb: l,
         });
 
-        console.log(`  User ${row.user_id.slice(0, 8)}… → ฿${(totalInvest + totalSpec).toFixed(2)} (invest=฿${totalInvest.toFixed(2)}, spec=฿${totalSpec.toFixed(2)})`);
+        console.log(`  User ${row.user_id.slice(0, 8)}… → ฿${currentVal} (O:฿${o} H:฿${h} L:฿${l})`);
     }
 
-    // 5. Upsert — conflict target is (user_id, snapshot_date) to allow re-runs
+    // 6. Upsert — conflict target is (user_id, snapshot_date) to allow re-runs
     if (snapshotRows.length > 0) {
         await sbUpsert('portfolio_snapshots', snapshotRows, 'user_id,snapshot_date');
         console.log(`\n✓ Upserted ${snapshotRows.length} snapshot(s) for ${snapshotDate}`);

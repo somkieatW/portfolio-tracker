@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, ComposedChart, Line } from "recharts";
 import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, updateTransaction, deleteTransaction, getPortfolioSnapshots } from "./supabase.js";
 import Auth from "./Auth.jsx";
 import AIChat from "./AIChat.jsx";
@@ -118,7 +118,6 @@ function calcDerivedTotals(txs, isUSD) {
       const sellQty = Math.abs(Number(t.qty || 0));
 
       if (totalUnits > 0 && sellUnits > 0) {
-        // Average cost for funds
         const ratio = sellUnits / totalUnits;
         invThb -= invThb * ratio;
         totalUnits -= sellUnits;
@@ -1903,20 +1902,36 @@ export default function App() {
           const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
           const pnlColor = change >= 0 ? T.green : T.red;
 
-          const pnlData = snapshots.map((s, i) => ({
-            date: s.snapshot_date,
-            value: s.total_invest_thb,
-            pnl: i === 0 ? 0 : +(s.total_invest_thb - snapshots[i - 1].total_invest_thb).toFixed(2),
-          }));
+          const pnlData = snapshots.map((s, i) => {
+            const o = s.o_invest_thb ?? s.total_invest_thb;
+            const h = s.h_invest_thb ?? s.total_invest_thb;
+            const l = s.l_invest_thb ?? s.total_invest_thb;
+            const c = s.total_invest_thb;
 
-          // Replace/Append live value to the end of the chart data
+            return {
+              date: s.snapshot_date,
+              open: o,
+              high: h,
+              low: l,
+              close: c,
+              // for tooltips and range calculation
+              value: c,
+              pnl: i === 0 ? 0 : +(c - snapshots[i - 1].total_invest_thb).toFixed(2),
+            };
+          });
+
+          // Replace/Update live value for today
           if (pnlData.length > 0) {
             const lastIdx = pnlData.length - 1;
             const todayStr = new Date().toISOString().slice(0, 10);
             if (pnlData[lastIdx].date === todayStr) {
-              pnlData[lastIdx].value = lastVal;
+              const d = pnlData[lastIdx];
+              d.close = lastVal;
+              d.high = Math.max(d.high, lastVal);
+              d.low = Math.min(d.low, lastVal);
+              d.value = lastVal;
               if (lastIdx > 0) {
-                pnlData[lastIdx].pnl = +(lastVal - pnlData[lastIdx - 1].value).toFixed(2);
+                d.pnl = +(lastVal - pnlData[lastIdx - 1].close).toFixed(2);
               }
             }
           }
@@ -1958,23 +1973,48 @@ export default function App() {
                     ))}
                   </div>
 
-                  {/* Net Worth Chart */}
                   <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
-                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Net Worth</p>
-                    <ResponsiveContainer width="100%" height={210}>
-                      <AreaChart data={pnlData}>
-                        <defs>
-                          <linearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={T.accent} stopOpacity={0.3} />
-                            <stop offset="100%" stopColor={T.accent} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Net Worth History (1D)</p>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <ComposedChart data={pnlData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
                         <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
-                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} domain={['dataMin - 500', 'dataMax + 500']} />
-                        <Tooltip formatter={v => [`฿${fmt(v)}`, "Net Worth"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
-                        <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#histGrad)" strokeWidth={2} dot={false} />
-                      </AreaChart>
+                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} domain={[(dataMin) => dataMin - 2000, (dataMax) => dataMax + 2000]} />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const d = payload[0].payload;
+                              const isUp = d.close >= d.open;
+                              return (
+                                <div style={{ background: T.card, border: `1px solid ${T.border}`, padding: "10px", borderRadius: 8, fontSize: 11 }}>
+                                  <p style={{ margin: "0 0 6px", fontWeight: 700, color: T.muted }}>{d.date}</p>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+                                    <span>Open:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.open)}</span>
+                                    <span>High:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.high)}</span>
+                                    <span>Low:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.low)}</span>
+                                    <span>Close:</span> <span style={{ textAlign: "right", fontWeight: 700, color: isUp ? T.green : T.red }}>฿{fmt(d.close)}</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        {/* Invisible area to force Y-axis to cover Highs and Lows */}
+                        <Line dataKey="high" stroke="none" dot={false} connectNulls />
+                        <Line dataKey="low" stroke="none" dot={false} connectNulls />
+
+                        <Bar
+                          dataKey={(d) => [d.open, d.close]}
+                          shape={(props) => {
+                            const { payload, background, yAxis } = props;
+                            const [min, max] = yAxis.domain;
+                            const h = background.y + (background.height * (1 - (payload.high - min) / (max - min)));
+                            const l = background.y + (background.height * (1 - (payload.low - min) / (max - min)));
+                            return <Candle {...props} open={payload.open} close={payload.close} high={h} low={l} />;
+                          }}
+                        />
+                      </ComposedChart>
                     </ResponsiveContainer>
                   </div>
 
