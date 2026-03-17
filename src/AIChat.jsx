@@ -104,13 +104,25 @@ Instructions:
 
             let responseText;
             try {
-                // Primary Model
+                // Primary Model (Latest & Fastest)
                 responseText = await fetchResponse("gemini-2.0-flash");
             } catch (error) {
-                // Fallback if Quota Exceeded (429) or other quota-related errors
-                if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("limit")) {
-                    console.warn(`Gemini 2.0 error: ${error.message}. Falling back to 1.5-flash...`);
-                    responseText = await fetchResponse("gemini-1.5-flash");
+                const isQuotaError = error.message?.includes("429") || error.message?.toLowerCase().includes("quota") || error.message?.toLowerCase().includes("limit");
+
+                if (isQuotaError) {
+                    console.warn(`Gemini 2.0 quota reached. Attempting fallback...`);
+                    try {
+                        // Attempt fallback to 1.5-flash
+                        responseText = await fetchResponse("gemini-1.5-flash");
+                    } catch (fallbackError) {
+                        console.warn(`Gemini 1.5-flash failed (Error: ${fallbackError.message}). Trying 1.5-flash-8b...`);
+                        try {
+                            // Deep fallback to 8B version which often has separate quotas
+                            responseText = await fetchResponse("gemini-1.5-flash-8b");
+                        } catch (finalError) {
+                            throw new Error(`All Gemini models exceeded quota or were unavailable. Please try again later. (Last error: ${finalError.message})`);
+                        }
+                    }
                 } else {
                     throw error;
                 }
