@@ -139,6 +139,52 @@ function calcDerivedTotals(txs, isUSD) {
 }
 
 
+// Helper to clean up asset data objects
+function sanitizeAsset(a, rate) {
+  const isUSD = a.currency === "USD";
+  const isStockGroup = STOCK_GROUP_TYPES.has(a.type);
+  const isFund = !!a.finnomenaCode?.trim() || a.units > 0;
+  const isStock = !!a.yahooSymbol?.trim() || a.qty > 0;
+
+  const clean = { ...a };
+
+  // 1. Force numeric values
+  if (clean.invested !== undefined) clean.invested = Number(Number(clean.invested).toFixed(2));
+  if (clean.currentValue !== undefined) clean.currentValue = Number(Number(clean.currentValue).toFixed(2));
+
+  if (isUSD) {
+    if (clean.investedUSD !== undefined) clean.investedUSD = Number(Number(clean.investedUSD).toFixed(2));
+    if (clean.currentValueUSD !== undefined) {
+      clean.currentValueUSD = Number(Number(clean.currentValueUSD).toFixed(2));
+    } else if (clean.currentValue) {
+      clean.currentValueUSD = Number((clean.currentValue / rate).toFixed(2));
+    }
+  } else {
+    // 2. Remove USD fields for THB assets
+    delete clean.investedUSD;
+    delete clean.currentValueUSD;
+  }
+
+  // 3. Remove irrelevant unit/qty fields
+  if (isFund) {
+    if (clean.units !== undefined) clean.units = Number(Number(clean.units).toFixed(8));
+    delete clean.qty;
+  } else if (isStock || isStockGroup) {
+    if (clean.qty !== undefined) clean.qty = Number(Number(clean.qty).toFixed(8));
+    delete clean.units;
+  } else {
+    delete clean.units;
+    delete clean.qty;
+  }
+
+  // 4. Recurse for sub-stocks
+  if (clean.subAssets?.length > 0) {
+    clean.subAssets = clean.subAssets.map(sub => sanitizeAsset(sub, rate));
+  }
+
+  return clean;
+}
+
 // ─── SAVE INDICATOR ───────────────────────────────────────────────────────────
 function SaveBadge({ status }) {
   const cfg = {
@@ -193,7 +239,7 @@ const selectStyle = { ...inputStyle, cursor: "pointer" };
 
 // ─── ASSET FORM ───────────────────────────────────────────────────────────────
 function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
-  const rate = usdThbRate || 35;
+  const rate = usdThbRate;
   const blank = { name: "", type: "equity", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", currency: "THB", color: PALETTE[Math.floor(Math.random() * PALETTE.length)], notes: "", isSpeculative: false, finnomenaCode: "", units: "", yahooSymbol: "", qty: "" };
   const [form, setForm] = useState(() => {
     if (!initial) return blank;
@@ -233,10 +279,18 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
 
     const currentValueFinal = isUSD ? +(parseFloat(form.currentValueUSD || 0) * rate).toFixed(2) : parseFloat(form.currentValue) || 0;
 
-    onSave({
-      ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: currentValueFinal,
-      units: unitsFinal, finnomenaCode: form.finnomenaCode.trim(), qty: qtyFinal, yahooSymbol: form.yahooSymbol.trim()
-    });
+    const payload = sanitizeAsset({
+      ...form,
+      id: form.id || uid(),
+      invested: investedFinal,
+      currentValue: currentValueFinal,
+      units: unitsFinal,
+      finnomenaCode: form.finnomenaCode.trim(),
+      qty: qtyFinal,
+      yahooSymbol: form.yahooSymbol.trim()
+    }, rate);
+
+    onSave(payload);
   };
 
   return (
@@ -357,7 +411,7 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
 function AddInvestmentModal({ asset, subAsset, initialTx, onSave, onClose, usdThbRate }) {
   const target = subAsset || asset;
   const isUSD = target.currency === "USD";
-  const rate = usdThbRate || 35;
+  const rate = usdThbRate;
   const isFund = !!target.finnomenaCode?.trim();
   const isStock = !!target.yahooSymbol?.trim() || STOCK_GROUP_TYPES.has(target.type) || target.type === "stock" || target.type === "us_stocks" || target.type === "thai_stocks";
 
@@ -586,7 +640,7 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, o
 // UpdateValueModal: if asset.currency === 'USD', input in $ and convert to THB on save
 function UpdateValueModal({ asset, onSave, onClose, usdThbRate }) {
   const isUSD = asset.currency === "USD";
-  const rate = usdThbRate || 35;
+  const rate = usdThbRate;
   const initVal = isUSD && asset.currentValue ? +((asset.currentValue / rate)).toFixed(2) : asset.currentValue;
   const [val, setVal] = useState(initVal);
   const currentThb = isUSD ? parseFloat(val || 0) * rate : parseFloat(val || 0);
@@ -695,7 +749,7 @@ function AssetCard({ asset, total, onEdit, onUpdateValue, onDelete, onAddInvestm
 // ─── STOCK SUB-ASSET FORM ─────────────────────────────────────────────────────
 function StockSubForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
   const blank = { name: "", invested: "", investedUSD: "", currentValue: "", currentValueUSD: "", notes: "", yahooSymbol: "", qty: "", currency: "THB" };
-  const rate = usdThbRate || 35;
+  const rate = usdThbRate;
   const [form, setForm] = useState(() => {
     if (!initial) return blank;
     const isUSD = (initial.currency ?? "THB") === "USD";
@@ -739,7 +793,16 @@ function StockSubForm({ initial, onSave, onClose, usdThbRate, hasTransactions })
 
     const currentValueFinal = isUSD ? +(parseFloat(form.currentValueUSD || 0) * rate).toFixed(2) : parseFloat(form.currentValue) || 0;
 
-    onSave({ ...form, id: form.id || uid(), invested: investedFinal, investedUSD, currentValue: currentValueFinal, qty: qtyFinal, yahooSymbol: form.yahooSymbol.trim() });
+    const payload = sanitizeAsset({
+      ...form,
+      id: form.id || uid(),
+      invested: investedFinal,
+      currentValue: currentValueFinal,
+      qty: qtyFinal,
+      yahooSymbol: form.yahooSymbol.trim()
+    }, rate);
+
+    onSave(payload);
   };
   return (
     <>
@@ -1095,6 +1158,18 @@ export default function App() {
   }, [loadStatus]);
 
 
+  // ── One-time Data Migration (Sanitization) ──
+  useEffect(() => {
+    if (loadStatus !== "ready" || !usdThbRate) return;
+    setAssets(prev => {
+      const sanitized = prev.map(a => sanitizeAsset(a, usdThbRate));
+      // Only update if something actually changed to avoid infinite save loops
+      if (JSON.stringify(sanitized) === JSON.stringify(prev)) return prev;
+      console.log("[Migration] Sanitizing legacy asset data structure...");
+      return sanitized;
+    });
+  }, [loadStatus, usdThbRate]);
+
   // ── Debounced save to Supabase ──
   useEffect(() => {
     if (loadStatus !== "ready" || !userId) return;
@@ -1111,54 +1186,55 @@ export default function App() {
   // 1. Derive invested/units from transactions (source of truth if they exist)
   const derivedAssets = assets.map(asset => {
     let derived = { ...asset };
+    const isUSD = asset.currency === "USD";
 
     // Top-level asset (e.g. fund, crypto, generic stock)
     const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id && (t.type === 'buy' || t.type === 'sell'));
     if (assetTxs.length > 0) {
-      const isUSD = asset.currency === "USD";
       const { invThb, invUsd, totalUnits, totalQty } = calcDerivedTotals(assetTxs, isUSD);
 
       derived.invested = invThb;
       if (isUSD) derived.investedUSD = invUsd;
 
       // Dynamically adjust currentValue matching the new derived unit count
-      // using the original price-per-unit from the base asset configuration
       if (asset.units > 0 && asset.currentValue !== undefined) {
         const unitPrice = asset.currentValue / asset.units;
-        derived.currentValue = +(totalUnits * unitPrice).toFixed(2);
+        derived.currentValue = totalUnits * unitPrice;
       } else if (asset.qty > 0 && asset.currentValue !== undefined) {
         const unitPrice = asset.currentValue / asset.qty;
-        derived.currentValue = +(totalQty * unitPrice).toFixed(2);
+        derived.currentValue = totalQty * unitPrice;
       }
 
-      if (asset.finnomenaCode?.trim() || asset.units > 0) {
-        derived.units = totalUnits;
-      }
-      if (asset.yahooSymbol?.trim() || asset.qty > 0) {
-        derived.qty = totalQty;
-      }
+      if (derived.units !== undefined) derived.units = totalUnits;
+      if (derived.qty !== undefined) derived.qty = totalQty;
     }
 
     // Sub-assets (e.g. inside US Stocks / Thai Stocks groups)
     if (derived.subAssets?.length > 0) {
       derived.subAssets = derived.subAssets.map(sub => {
+        const subIsUSD = sub.currency === 'USD';
         const subTxs = transactions.filter(t => t.asset_id === asset.id && t.sub_asset_id === sub.id && (t.type === 'buy' || t.type === 'sell'));
-        if (subTxs.length === 0) return sub; // fallback to manual if no txs
 
-        const isUSD = sub.currency === 'USD';
-        const { invThb, invUsd, totalQty } = calcDerivedTotals(subTxs, isUSD);
+        let subDerived = { ...sub };
 
-        let newCurrentValue = sub.currentValue;
-        if (sub.qty > 0 && sub.currentValue !== undefined) {
-          const unitPrice = sub.currentValue / sub.qty;
-          newCurrentValue = +(totalQty * unitPrice).toFixed(2);
+        if (subTxs.length > 0) {
+          const { invThb, invUsd, totalQty } = calcDerivedTotals(subTxs, subIsUSD);
+          subDerived.invested = invThb;
+          if (subIsUSD) subDerived.investedUSD = invUsd;
+
+          if (sub.qty > 0 && sub.currentValue !== undefined) {
+            const unitPrice = sub.currentValue / sub.qty;
+            subDerived.currentValue = totalQty * unitPrice;
+          }
+          subDerived.qty = totalQty;
         }
 
-        return { ...sub, invested: invThb, investedUSD: invUsd, qty: totalQty, currentValue: newCurrentValue };
+        return subDerived;
       });
     }
 
-    return derived;
+    // Apply global sanitization rules
+    return sanitizeAsset(derived, usdThbRate);
   });
 
   // 1.5. Separate Active vs Closed assets
@@ -1231,10 +1307,10 @@ export default function App() {
         type: 'buy',
         currency: asset.currency || 'THB',
         date: new Date().toISOString().split('T')[0],
-        amount_thb: asset.currency === 'USD' ? null : parseFloat(asset.invested || 0),
-        amount_usd: asset.currency === 'USD' ? parseFloat(asset.investedUSD || 0) : null,
-        units: parseFloat(asset.units || 0),
-        qty: parseFloat(asset.qty || 0),
+        amount_thb: asset.currency === 'USD' ? null : Number(parseFloat(asset.invested || 0).toFixed(2)),
+        amount_usd: asset.currency === 'USD' ? Number(parseFloat(asset.investedUSD || 0).toFixed(2)) : null,
+        units: asset.units ? Number(parseFloat(asset.units).toFixed(8)) : null,
+        qty: asset.qty ? Number(parseFloat(asset.qty).toFixed(8)) : null,
         notes: '[System] Initial Setup Investment'
       });
     }
@@ -1331,10 +1407,10 @@ export default function App() {
         type: 'buy',
         currency: sub.currency || 'THB',
         date: new Date().toISOString().split('T')[0],
-        amount_thb: sub.currency === 'USD' ? null : parseFloat(sub.invested || 0),
-        amount_usd: sub.currency === 'USD' ? parseFloat(sub.investedUSD || 0) : null,
+        amount_thb: sub.currency === 'USD' ? null : Number(parseFloat(sub.invested || 0).toFixed(2)),
+        amount_usd: sub.currency === 'USD' ? Number(parseFloat(sub.investedUSD || 0).toFixed(2)) : null,
         units: null, // Sub-assets are distinct units of stocks
-        qty: parseFloat(sub.qty || 0),
+        qty: Number(parseFloat(sub.qty || 0).toFixed(8)),
         notes: '[System] Initial Setup Investment'
       });
     }
