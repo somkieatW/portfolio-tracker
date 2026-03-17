@@ -59,7 +59,6 @@ export default function AIChat({ assets, snapshots = [], transactions, netWorth,
 
         try {
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             // Build context
             const contextPrompt = `
@@ -85,20 +84,37 @@ Instructions:
 - Keep answers concise and helpful using Markdown.
 `;
 
-            const history = messages
-                .filter(m => !m.content.startsWith("⚠️") && !m.content.startsWith("Hi! I'm your AI Portfolio Assistant"))
-                .map(m => ({
-                    role: m.role === "assistant" ? "model" : "user",
-                    parts: [{ text: m.content }]
-                }));
+            const fetchResponse = async (modelName) => {
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const history = messages
+                    .filter(m => !m.content.startsWith("⚠️") && !m.content.startsWith("Hi! I'm your AI Portfolio Assistant"))
+                    .map(m => ({
+                        role: m.role === "assistant" ? "model" : "user",
+                        parts: [{ text: m.content }]
+                    }));
 
-            const chat = model.startChat({
-                history: history.length > 0 ? history : [],
-            });
+                const chat = model.startChat({
+                    history: history.length > 0 ? history : [],
+                });
 
-            const promptToSend = history.length === 0 ? `${contextPrompt}\n\nUser Question: ${userMsg}` : userMsg;
-            const result = await chat.sendMessage(promptToSend);
-            const responseText = result.response.text();
+                const promptToSend = history.length === 0 ? `${contextPrompt}\n\nUser Question: ${userMsg}` : userMsg;
+                const result = await chat.sendMessage(promptToSend);
+                return result.response.text();
+            };
+
+            let responseText;
+            try {
+                // Primary Model
+                responseText = await fetchResponse("gemini-2.0-flash");
+            } catch (error) {
+                // Fallback if Quota Exceeded (429) or other quota-related errors
+                if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("limit")) {
+                    console.warn(`Gemini 2.0 error: ${error.message}. Falling back to 1.5-flash...`);
+                    responseText = await fetchResponse("gemini-1.5-flash");
+                } else {
+                    throw error;
+                }
+            }
 
             setMessages(prev => [...prev, { role: "assistant", content: responseText }]);
         } catch (error) {
