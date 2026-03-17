@@ -1050,7 +1050,17 @@ const Candle = (props) => {
   return (
     <g>
       <line x1={xc} y1={lowY} x2={xc} y2={highY} stroke={candleColor} strokeWidth={1.5} />
-      <rect x={x} y={y} width={width} height={Math.max(1, height)} fill={candleColor} />
+      {/* Body with subtle border */}
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={Math.max(1.5, height)}
+        fill={candleColor}
+        stroke={candleColor}
+        strokeWidth={0.5}
+        fillOpacity={0.9}
+      />
     </g>
   );
 };
@@ -2004,8 +2014,15 @@ export default function App() {
                     <ResponsiveContainer width="100%" height={240}>
                       <ComposedChart data={pnlData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
-                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} domain={[(dataMin) => dataMin - 2000, (dataMax) => dataMax + 2000]} />
+                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
+                        <YAxis
+                          stroke={T.muted}
+                          tick={{ fontSize: 9 }}
+                          tickFormatter={v => `฿${(v / 1000).toFixed(1)}k`}
+                          width={48}
+                          domain={[(dataMin) => dataMin - 600, (dataMax) => dataMax + 600]}
+                          allowDataOverflow={true}
+                        />
                         <Tooltip
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
@@ -2032,6 +2049,8 @@ export default function App() {
 
                         <Bar
                           dataKey={(d) => [d.open, d.close]}
+                          barSize={12} // Thicker candles
+                          stroke={T.border} // Subtle stroke
                           shape={(props) => (
                             <Candle
                               {...props}
@@ -2050,17 +2069,19 @@ export default function App() {
                   <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px" }}>
                     <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Daily P&amp;L</p>
                     <ResponsiveContainer width="100%" height={140}>
-                      <BarChart data={pnlData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
-                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
+                      <BarChart data={pnlData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
                         <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
                         <Tooltip content={<PnLTooltip />} />
-                        <Bar dataKey="pnl" radius={[3, 3, 0, 0]}
-                          fill={T.green}
-                          label={false}
-                          isAnimationActive={false}>
-                          {pnlData.map((d, i) => (
-                            <Cell key={i} fill={d.pnl >= 0 ? T.green : T.red} />
+                        <Bar
+                          dataKey="pnl"
+                          radius={[4, 4, 0, 0]}
+                          barSize={16}
+                          fill={(d) => d.pnl >= 0 ? T.green : T.red}
+                        >
+                          {pnlData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? T.green : T.red} opacity={0.8} />
                           ))}
                         </Bar>
                       </BarChart>
@@ -2073,124 +2094,144 @@ export default function App() {
         })()}
 
         {/* AI ASSISTANT */}
-        {tab === "ai" && (
-          <AIChat assets={normalizedAssets} transactions={transactions} netWorth={netWorth} settings={settings} updateSettings={updateSettings} />
-        )}
+        {
+          tab === "ai" && (
+            <AIChat assets={normalizedAssets} transactions={transactions} netWorth={netWorth} settings={settings} updateSettings={updateSettings} />
+          )
+        }
 
         {/* SETTINGS */}
-        {tab === "settings" && (
-          <div>
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
-              <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: T.text }}>Portfolio Settings</p>
-              <Field label={`Speculation Limit — ${settings.specCap}%`} hint="Target limit for speculative assets compared to main investments">
-                <input type="range" min="5" max="30" step="1" value={settings.specCap} onChange={e => updateSettings("specCap", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.orange }} />
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: T.muted }}>5%</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.orange }}>{settings.specCap}%</span>
-                  <span style={{ fontSize: 11, color: T.muted }}>30%</span>
-                </div>
-              </Field>
-              <Field label={`Default DCA — ฿${fmt(settings.dca)}/month`} hint="Used in projection calculations">
-                <input type="range" min="100" max="10000" step="100" value={settings.dca} onChange={e => updateSettings("dca", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.accent }} />
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: T.muted }}>฿100</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>฿{fmt(settings.dca)}</span>
-                  <span style={{ fontSize: 11, color: T.muted }}>฿10,000</span>
-                </div>
-              </Field>
-              <Field label="Gemini API Key" hint="Required for AI Assistant.">
-                <input style={inputStyle} type="password" value={settings.geminiApiKey || ""} onChange={e => updateSettings("geminiApiKey", e.target.value)} placeholder="AIzaSy..." />
-              </Field>
-            </div>
-
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
-              <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: T.text }}>All Assets ({assets.length})</p>
-              {assets.map(a => (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: T.muted }}>฿{fmt(a.currentValue)} {a.isSpeculative ? "· Speculative" : ""}</p>
+        {
+          tab === "settings" && (
+            <div>
+              <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
+                <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: T.text }}>Portfolio Settings</p>
+                <Field label={`Speculation Limit — ${settings.specCap}%`} hint="Target limit for speculative assets compared to main investments">
+                  <input type="range" min="5" max="30" step="1" value={settings.specCap} onChange={e => updateSettings("specCap", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.orange }} />
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, color: T.muted }}>5%</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.orange }}>{settings.specCap}%</span>
+                    <span style={{ fontSize: 11, color: T.muted }}>30%</span>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => { setEditingAsset(a); setModal("edit"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}33`, borderRadius: 6, color: T.accent, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>Edit</button>
-                    <button onClick={() => deleteAsset(a.id)} style={{ background: "#ef444420", border: `1px solid ${T.red}33`, borderRadius: 6, color: T.red, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>Del</button>
+                </Field>
+                <Field label={`Default DCA — ฿${fmt(settings.dca)}/month`} hint="Used in projection calculations">
+                  <input type="range" min="100" max="10000" step="100" value={settings.dca} onChange={e => updateSettings("dca", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.accent }} />
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, color: T.muted }}>฿100</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>฿{fmt(settings.dca)}</span>
+                    <span style={{ fontSize: 11, color: T.muted }}>฿10,000</span>
                   </div>
-                </div>
-              ))}
-            </div>
+                </Field>
+                <Field label="Gemini API Key" hint="Required for AI Assistant.">
+                  <input style={inputStyle} type="password" value={settings.geminiApiKey || ""} onChange={e => updateSettings("geminiApiKey", e.target.value)} placeholder="AIzaSy..." />
+                </Field>
+              </div>
 
-            <div style={{ background: "#1a0a0a", border: `1px solid ${T.red}33`, borderRadius: 14, padding: 18 }}>
-              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: T.red }}>Danger Zone</p>
-              <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted }}>Reset all data to the default sample portfolio. Cannot be undone.</p>
-              <button onClick={() => { if (window.confirm("Reset to defaults?")) { setAssets(DEFAULT_ASSETS); setSettings(DEFAULT_SETTINGS); } }} style={{ background: "transparent", border: `1px solid ${T.red}`, borderRadius: 8, color: T.red, padding: "9px 18px", cursor: "pointer", fontSize: 13, fontFamily: "inherit", fontWeight: 600 }}>Reset to Defaults</button>
+              <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
+                <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 700, color: T.text }}>All Assets ({assets.length})</p>
+                {assets.map(a => (
+                  <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: T.muted }}>฿{fmt(a.currentValue)} {a.isSpeculative ? "· Speculative" : ""}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => { setEditingAsset(a); setModal("edit"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}33`, borderRadius: 6, color: T.accent, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>Edit</button>
+                      <button onClick={() => deleteAsset(a.id)} style={{ background: "#ef444420", border: `1px solid ${T.red}33`, borderRadius: 6, color: T.red, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>Del</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: "#1a0a0a", border: `1px solid ${T.red}33`, borderRadius: 14, padding: 18 }}>
+                <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: T.red }}>Danger Zone</p>
+                <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted }}>Reset all data to the default sample portfolio. Cannot be undone.</p>
+                <button onClick={() => { if (window.confirm("Reset to defaults?")) { setAssets(DEFAULT_ASSETS); setSettings(DEFAULT_SETTINGS); } }} style={{ background: "transparent", border: `1px solid ${T.red}`, borderRadius: 8, color: T.red, padding: "9px 18px", cursor: "pointer", fontSize: 13, fontFamily: "inherit", fontWeight: 600 }}>Reset to Defaults</button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )
+        }
+      </div >
 
       {/* ── MODALS ── */}
-      {modal === "add" && (
-        <Modal title="Add New Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={false} />
-        </Modal>
-      )}
-      {modal === "edit" && editingAsset && (
-        <Modal title="Edit Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
-          <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={transactions.some(t => t.asset_id === editingAsset.id && !t.sub_asset_id)} />
-        </Modal>
-      )}
-      {modal === "update" && editingAsset && (
-        <UpdateValueModal asset={editingAsset} usdThbRate={usdThbRate} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
-      )}
+      {
+        modal === "add" && (
+          <Modal title="Add New Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
+            <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={false} />
+          </Modal>
+        )
+      }
+      {
+        modal === "edit" && editingAsset && (
+          <Modal title="Edit Asset" onClose={() => { setModal(null); setEditingAsset(null); }}>
+            <AssetForm initial={editingAsset} usdThbRate={usdThbRate} onSave={saveAsset} onClose={() => { setModal(null); setEditingAsset(null); }} hasTransactions={transactions.some(t => t.asset_id === editingAsset.id && !t.sub_asset_id)} />
+          </Modal>
+        )
+      }
+      {
+        modal === "update" && editingAsset && (
+          <UpdateValueModal asset={editingAsset} usdThbRate={usdThbRate} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
+        )
+      }
 
       {/* ── SUB-ASSET MODALS (for stock groups) ── */}
-      {subModal === "add" && (
-        <Modal title="Add Stock to Group" onClose={closeSub}>
-          <StockSubForm usdThbRate={usdThbRate} onSave={saveSubAsset} onClose={closeSub} hasTransactions={false} />
-        </Modal>
-      )}
-      {subModal === "edit" && editingSubAsset && (
-        <Modal title={`Edit — ${editingSubAsset.name}`} onClose={closeSub}>
-          <StockSubForm usdThbRate={usdThbRate} initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} hasTransactions={transactions.some(t => t.asset_id === activeGroupId && t.sub_asset_id === editingSubAsset.id)} />
-        </Modal>
-      )}
-      {subModal === "update" && editingSubAsset && (
-        <UpdateValueModal
-          asset={editingSubAsset}
-          usdThbRate={usdThbRate}
-          onSave={val => updateSubValue(activeGroupId, editingSubAsset.id, val)}
-          onClose={closeSub} />
-      )}
+      {
+        subModal === "add" && (
+          <Modal title="Add Stock to Group" onClose={closeSub}>
+            <StockSubForm usdThbRate={usdThbRate} onSave={saveSubAsset} onClose={closeSub} hasTransactions={false} />
+          </Modal>
+        )
+      }
+      {
+        subModal === "edit" && editingSubAsset && (
+          <Modal title={`Edit — ${editingSubAsset.name}`} onClose={closeSub}>
+            <StockSubForm usdThbRate={usdThbRate} initial={editingSubAsset} onSave={saveSubAsset} onClose={closeSub} hasTransactions={transactions.some(t => t.asset_id === activeGroupId && t.sub_asset_id === editingSubAsset.id)} />
+          </Modal>
+        )
+      }
+      {
+        subModal === "update" && editingSubAsset && (
+          <UpdateValueModal
+            asset={editingSubAsset}
+            usdThbRate={usdThbRate}
+            onSave={val => updateSubValue(activeGroupId, editingSubAsset.id, val)}
+            onClose={closeSub} />
+        )
+      }
 
-      {txModal && (
-        <AddInvestmentModal
-          asset={txModal.asset}
-          subAsset={txModal.subAsset}
-          initialTx={txModal.initialTx}
-          usdThbRate={usdThbRate}
-          onSave={saveTransaction}
-          onClose={() => setTxModal(null)}
-        />
-      )}
+      {
+        txModal && (
+          <AddInvestmentModal
+            asset={txModal.asset}
+            subAsset={txModal.subAsset}
+            initialTx={txModal.initialTx}
+            usdThbRate={usdThbRate}
+            onSave={saveTransaction}
+            onClose={() => setTxModal(null)}
+          />
+        )
+      }
 
-      {historyModal && (
-        <TransactionHistory
-          asset={historyModal.asset}
-          subAsset={historyModal.subAsset}
-          transactions={historyModal.subAsset
-            ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
-            : transactions.filter(t => t.asset_id === historyModal.asset.id)}
-          snapshots={snapshots}
-          onDelete={deleteTx}
-          onEdit={tx => {
-            setTxModal({ asset: historyModal.asset, subAsset: historyModal.subAsset, initialTx: tx });
-            setHistoryModal(null);
-          }}
-          isUSD={historyModal.isUSD}
-          onClose={() => setHistoryModal(null)}
-        />
-      )}
-    </div>
+      {
+        historyModal && (
+          <TransactionHistory
+            asset={historyModal.asset}
+            subAsset={historyModal.subAsset}
+            transactions={historyModal.subAsset
+              ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
+              : transactions.filter(t => t.asset_id === historyModal.asset.id)}
+            snapshots={snapshots}
+            onDelete={deleteTx}
+            onEdit={tx => {
+              setTxModal({ asset: historyModal.asset, subAsset: historyModal.subAsset, initialTx: tx });
+              setHistoryModal(null);
+            }}
+            isUSD={historyModal.isUSD}
+            onClose={() => setHistoryModal(null)}
+          />
+        )
+      }
+    </div >
   );
 }
