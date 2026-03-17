@@ -1015,6 +1015,21 @@ function CustomTip({ active, payload }) {
   );
 }
 
+function PnLTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const val = payload[0].value;
+  const color = val >= 0 ? T.green : T.red;
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
+      <p style={{ margin: "0 0 4px", color: T.muted }}>{payload[0].payload.date}</p>
+      <p style={{ margin: 0, fontWeight: 700, color }}>
+        {val >= 0 ? "+" : "-"}฿{fmt(Math.abs(val))}
+      </p>
+      <p style={{ margin: 0, fontSize: 10, color: T.dim }}>Daily Change</p>
+    </div>
+  );
+}
+
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1922,7 +1937,7 @@ export default function App() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
                     {[
                       { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
-                      { label: "Change", value: `${change >= 0 ? "+" : ""}฿${fmt(change)}`, color: pnlColor },
+                      { label: "Change", value: `${change >= 0 ? "+" : "-"}฿${fmt(Math.abs(change))}`, color: pnlColor },
                       { label: `Return (${RANGES.find(r => r.days === snapshotRange)?.label ?? "All"})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
                     ].map(s => (
                       <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
@@ -1960,7 +1975,7 @@ export default function App() {
                         <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
                         <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
                         <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
-                        <Tooltip formatter={v => [`${v >= 0 ? "+" : ""}฿${fmt(Math.abs(v))}`, "Daily Change"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
+                        <Tooltip content={<PnLTooltip />} />
                         <Bar dataKey="pnl" radius={[3, 3, 0, 0]}
                           fill={T.green}
                           label={false}
