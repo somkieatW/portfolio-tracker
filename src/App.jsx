@@ -2139,7 +2139,13 @@ export default function App() {
                         coreAssets: normalizedAssets
                           .filter(a => !a.isSpeculative)
                           .map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })),
-                        historicalSnapshots: snapshots.map(s => ({ date: s.snapshot_date, core_value: s.total_invest_thb }))
+                        historicalSnapshots: snapshots.map(s => ({
+                          date: s.snapshot_date,
+                          open: s.o_invest_thb ?? s.total_invest_thb,
+                          high: s.h_invest_thb ?? s.total_invest_thb,
+                          low: s.l_invest_thb ?? s.total_invest_thb,
+                          close: s.total_invest_thb
+                        }))
                       };
                       navigator.clipboard.writeText(JSON.stringify(aiData, null, 2));
                       alert("AI Context Data copied to clipboard!");

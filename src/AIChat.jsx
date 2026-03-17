@@ -74,7 +74,13 @@ Use this data to answer questions about:
 --- CORE PORTFOLIO CONTEXT ---
 Current Net Worth (Core): ฿${netWorth}
 Core Assets: ${JSON.stringify(assets.map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })), null, 2)}
-Historical Performance (Snapshots): ${JSON.stringify(snapshots.map(s => ({ date: s.snapshot_date, core_value: s.total_invest_thb })), null, 2)}
+Historical Performance (Snapshots): ${JSON.stringify(snapshots.map(s => ({
+                date: s.snapshot_date,
+                open: s.o_invest_thb ?? s.total_invest_thb,
+                high: s.h_invest_thb ?? s.total_invest_thb,
+                low: s.l_invest_thb ?? s.total_invest_thb,
+                close: s.total_invest_thb
+            })), null, 2)}
 ------------------------------
 
 Instructions:
