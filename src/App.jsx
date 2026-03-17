@@ -1031,14 +1031,13 @@ function PnLTooltip({ active, payload }) {
 
 // Custom Candle component for History chart
 const Candle = (props) => {
-  const { x, y, width, height, open, close, high, low, color } = props;
+  const { x, y, width, height, open, close, high, low } = props;
   const isUp = close >= open;
-  const candleColor = color || (isUp ? T.green : T.red);
+  const candleColor = isUp ? T.green : T.red;
 
   const xc = x + width / 2;
 
   // Robust coordinate calculation for wicks
-  // We use the Bar's y and height which already map to [open, close]
   const bodyMax = Math.max(open, close);
   const bodyMin = Math.min(open, close);
   const bodyRange = Math.max(0.01, Math.abs(bodyMax - bodyMin));
@@ -1049,8 +1048,9 @@ const Candle = (props) => {
 
   return (
     <g>
+      {/* Wick */}
       <line x1={xc} y1={lowY} x2={xc} y2={highY} stroke={candleColor} strokeWidth={1.5} />
-      {/* Body with subtle border */}
+      {/* Body */}
       <rect
         x={x}
         y={y}
@@ -1059,7 +1059,6 @@ const Candle = (props) => {
         fill={candleColor}
         stroke={candleColor}
         strokeWidth={0.5}
-        fillOpacity={0.9}
       />
     </g>
   );
