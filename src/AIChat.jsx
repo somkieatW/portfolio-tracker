@@ -7,9 +7,8 @@ const T = {
     accent: "#3b82f6", green: "#22c55e", red: "#ef4444", yellow: "#eab308"
 };
 
-export default function AIChat({ assets, transactions, netWorth, settings, updateSettings }) {
+export default function AIChat({ assets, snapshots = [], transactions, netWorth, settings, updateSettings }) {
     const [messages, setMessages] = useState(() => {
-        // Check if we have a key first to show a welcome or warning message
         if (!settings?.geminiApiKey) {
             return [{ role: "assistant", content: "⚠️ Please go to the **Settings** tab and enter your Gemini API Key to start chatting." }];
         }
@@ -18,7 +17,7 @@ export default function AIChat({ assets, transactions, netWorth, settings, updat
             return settings.aiChatHistory;
         }
 
-        return [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your assets, transactions, and overall net worth. What would you like to know?" }];
+        return [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your core assets, transaction history, and historical performance trends. What would you like to know?" }];
     });
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +31,6 @@ export default function AIChat({ assets, transactions, netWorth, settings, updat
     // Save to Supabase when new messages are added
     useEffect(() => {
         if (settings?.geminiApiKey && messages.length > 0) {
-            // Only update if it grew or changed to avoid infinite loop
             const savedHist = settings.aiChatHistory || [];
             if (savedHist.length !== messages.length) {
                 updateSettings('aiChatHistory', messages);
@@ -42,7 +40,7 @@ export default function AIChat({ assets, transactions, netWorth, settings, updat
 
     const handleClear = () => {
         if (!window.confirm("Clear conversation history?")) return;
-        const fresh = [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your assets, transactions, and overall net worth. What would you like to know?" }];
+        const fresh = [{ role: "assistant", content: "Hi! I'm your AI Portfolio Assistant. I can analyze your core assets, transaction history, and historical performance trends. What would you like to know?" }];
         setMessages(fresh);
         updateSettings('aiChatHistory', fresh);
     };
@@ -61,22 +59,30 @@ export default function AIChat({ assets, transactions, netWorth, settings, updat
 
         try {
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             // Build context
             const contextPrompt = `
 You are an expert financial advisor and portfolio analyst.
-The user has provided you with their current portfolio data. 
-Use this data to answer their questions accurately and helpfully. Do NOT hallucinate data.
-When referring to money, format it nicely (e.g. ฿1,000.00 or $1,000.00).
+The user has provided you with their Core Portfolio data (this EXCLUDES speculative assets).
+You have access to their current valuation and historical performance via snapshots.
 
---- PORTFOLIO CONTEXT ---
-Total Net Worth: ฿${netWorth}
-Total Assets: ${JSON.stringify(assets.map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })), null, 2)}
-Settings: ${JSON.stringify(settings, null, 2)}
--------------------------
+Use this data to answer questions about:
+1. Current Allocation (Core Portfolio only).
+2. Performance Trends (using snapshots).
+3. Risk Assessment and Rebalancing.
 
-Please keep your answer concise, extremely helpful, and formatted using Markdown for readability.
+--- CORE PORTFOLIO CONTEXT ---
+Current Net Worth (Core): ฿${netWorth}
+Core Assets: ${JSON.stringify(assets.map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })), null, 2)}
+Historical Performance (Snapshots): ${JSON.stringify(snapshots.map(s => ({ date: s.snapshot_date, core_value: s.total_invest_thb })), null, 2)}
+------------------------------
+
+Instructions:
+- Always focus on the Core Portfolio.
+- Use snapshots to provide historical context (e.g. "Your portfolio grew by X% in the last week").
+- Format money as ฿1,000.00.
+- Keep answers concise and helpful using Markdown.
 `;
 
             const history = messages
@@ -86,15 +92,11 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
                     parts: [{ text: m.content }]
                 }));
 
-            // Prepend the system context to the first message sent to the API, 
-            // or start a new chat history if this is the first real message.
             const chat = model.startChat({
                 history: history.length > 0 ? history : [],
             });
 
-            // Send the user's message, but if it's the very first message in the conversation, inject the context.
             const promptToSend = history.length === 0 ? `${contextPrompt}\n\nUser Question: ${userMsg}` : userMsg;
-
             const result = await chat.sendMessage(promptToSend);
             const responseText = result.response.text();
 
@@ -109,7 +111,6 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 160px)", background: T.surface, borderRadius: 16, border: `1px solid ${T.border}`, overflow: "hidden" }}>
-            {/* Chat History */}
             <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
                 {messages.map((m, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
@@ -120,7 +121,7 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
                             borderBottomRightRadius: m.role === "user" ? 4 : 16,
                             borderBottomLeftRadius: m.role === "assistant" ? 4 : 16,
                             background: m.role === "user" ? T.accent : T.card,
-                            border: m.role === "assistant" ? `1px solid ${T.borderLight}` : "none",
+                            border: m.role === "assistant" ? `1px solid ${T.border}` : "none",
                             color: m.role === "user" ? "#fff" : T.text,
                             fontSize: 14,
                             lineHeight: 1.5,
@@ -132,7 +133,7 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
                 ))}
                 {isLoading && (
                     <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                        <div style={{ padding: "12px 16px", borderRadius: 16, background: T.card, border: `1px solid ${T.borderLight}`, color: T.muted, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ padding: "12px 16px", borderRadius: 16, background: T.card, border: `1px solid ${T.border}`, color: T.muted, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
                             <span className="typing-dot" style={{ animation: "pulse 1.5s infinite" }}>●</span>
                             <span className="typing-dot" style={{ animation: "pulse 1.5s infinite 0.2s" }}>●</span>
                             <span className="typing-dot" style={{ animation: "pulse 1.5s infinite 0.4s" }}>●</span>
@@ -142,12 +143,11 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
                 <div ref={bottomRef} />
             </div>
 
-            {/* Input Area */}
             <div style={{ padding: 16, background: T.card, borderTop: `1px solid ${T.border}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <button
                     onClick={handleClear}
                     title="Clear Chat History"
-                    style={{ flexShrink: 0, width: 44, height: 44, borderRadius: "50%", background: "transparent", color: T.muted, border: `1px solid ${T.borderLight}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    style={{ flexShrink: 0, width: 44, height: 44, borderRadius: "50%", background: "transparent", color: T.muted, border: `1px solid ${T.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -164,7 +164,7 @@ Please keep your answer concise, extremely helpful, and formatted using Markdown
                 <button
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading}
-                    style={{ width: 44, height: 44, borderRadius: "50%", background: input.trim() && !isLoading ? T.accent : T.borderLight, color: "#fff", border: "none", cursor: input.trim() && !isLoading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    style={{ width: 44, height: 44, borderRadius: "50%", background: input.trim() && !isLoading ? T.accent : T.border, color: "#fff", border: "none", cursor: input.trim() && !isLoading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
