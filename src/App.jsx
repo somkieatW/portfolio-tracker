@@ -1897,16 +1897,16 @@ export default function App() {
             { label: "1Y", days: 365 },
             { label: "All", days: 0 },
           ];
-          const firstVal = snapshots[0]?.net_worth_thb ?? 0;
-          const lastVal = snapshots[snapshots.length - 1]?.net_worth_thb ?? 0;
+          const firstVal = snapshots[0]?.total_invest_thb ?? 0;
+          const lastVal = snapshots[snapshots.length - 1]?.total_invest_thb ?? 0;
           const change = lastVal - firstVal;
           const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
           const pnlColor = change >= 0 ? T.green : T.red;
 
           const pnlData = snapshots.map((s, i) => ({
             date: s.snapshot_date,
-            value: s.net_worth_thb,
-            pnl: i === 0 ? 0 : +(s.net_worth_thb - snapshots[i - 1].net_worth_thb).toFixed(2),
+            value: s.total_invest_thb,
+            pnl: i === 0 ? 0 : +(s.total_invest_thb - snapshots[i - 1].total_invest_thb).toFixed(2),
           }));
 
           return (
