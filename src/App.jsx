@@ -2128,6 +2128,45 @@ export default function App() {
                     <span style={{ fontSize: 11, color: T.muted }}>฿10,000</span>
                   </div>
                 </Field>
+
+                <div style={{ marginTop: 24, borderTop: `1px solid ${T.border}`, paddingTop: 20 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4 }}>AI Context & Data Export</p>
+                  <p style={{ fontSize: 11, color: T.muted, marginBottom: 16 }}>Copy the exact JSON data sent to your AI Portfolio Assistant for external analysis or debugging.</p>
+                  <button
+                    onClick={() => {
+                      const aiData = {
+                        netWorth: netWorth,
+                        coreAssets: normalizedAssets
+                          .filter(a => !a.isSpeculative)
+                          .map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })),
+                        historicalSnapshots: snapshots.map(s => ({ date: s.snapshot_date, core_value: s.total_invest_thb }))
+                      };
+                      navigator.clipboard.writeText(JSON.stringify(aiData, null, 2));
+                      alert("AI Context Data copied to clipboard!");
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: 10,
+                      border: `1px solid ${T.accent}`,
+                      background: T.accentGlow,
+                      color: T.accent,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy AI Debug Data (JSON)
+                  </button>
+                </div>
                 <Field label="Gemini API Key" hint="Required for AI Assistant.">
                   <input style={inputStyle} type="password" value={settings.geminiApiKey || ""} onChange={e => updateSettings("geminiApiKey", e.target.value)} placeholder="AIzaSy..." />
                 </Field>
