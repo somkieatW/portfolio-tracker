@@ -959,6 +959,7 @@ export default function App() {
   const [assets, setAssets] = useState(DEFAULT_ASSETS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [tab, setTab] = useState("dashboard");
+  const [showClosed, setShowClosed] = useState(false);
   const [modal, setModal] = useState(null);
   // History tab state
   const [snapshots, setSnapshots] = useState([]);
@@ -1160,10 +1161,17 @@ export default function App() {
     return derived;
   });
 
-  // 2. Compute group totals from subAssets
+  // 1.5. Separate Active vs Closed assets
   const normalizedAssets = normalizeAssets(derivedAssets);
-  const investments = normalizedAssets.filter(a => !a.isSpeculative);
-  const speculative = normalizedAssets.filter(a => a.isSpeculative);
+  const hasHistory = (aid, sid = null) => transactions.some(t => t.asset_id === aid && (sid ? t.sub_asset_id === sid : !t.sub_asset_id));
+
+  // A position is "Active" if it has value/units OR if it has NO history yet (newly added manual placeholder)
+  const activeAssets = normalizedAssets.filter(a => a.currentValue > 0 || a.units > 0 || a.qty > 0 || !hasHistory(a.id));
+  const closedAssets = normalizedAssets.filter(a => (a.currentValue <= 0 && (a.units || 0) <= 0 && (a.qty || 0) <= 0) && hasHistory(a.id));
+
+  // 2. Compute group totals from subAssets
+  const investments = activeAssets.filter(a => !a.isSpeculative);
+  const speculative = activeAssets.filter(a => a.isSpeculative);
   const totalInvest = investments.reduce((s, a) => s + a.currentValue, 0);
   const totalInvested = investments.reduce((s, a) => s + a.invested, 0);
   const totalSpec = speculative.reduce((s, a) => s + a.currentValue, 0);
