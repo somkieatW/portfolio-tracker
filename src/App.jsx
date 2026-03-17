@@ -1266,7 +1266,7 @@ export default function App() {
   const totalInvest = investments.reduce((s, a) => s + a.currentValue, 0);
   const totalInvested = investments.reduce((s, a) => s + a.invested, 0);
   const totalSpec = speculative.reduce((s, a) => s + a.currentValue, 0);
-  const netWorth = totalInvest + totalSpec;
+  const netWorth = totalInvest;
   const grandTotal = totalInvest; // Grand Total is now ONLY true investments
   const totalPL = totalInvest - totalInvested;
   const totalPLpct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
@@ -1616,7 +1616,6 @@ export default function App() {
               { label: "Initial Investment", value: `฿${fmt(totalInvested)}`, color: T.text, sub: "Cost basis" },
               { label: "Core Portfolio", value: `฿${fmt(totalInvest)}`, color: T.accent, sub: "Long-term safe assets" },
               { label: "Investment P&L", value: `${totalPL >= 0 ? "+" : ""}฿${fmt(Math.abs(totalPL))}`, color: totalPL >= 0 ? T.green : T.red, sub: `${totalPLpct >= 0 ? "+" : ""}${totalPLpct.toFixed(2)}%` },
-              { label: "Speculation", value: `฿${fmt(totalSpec)}`, color: specOver > 0 ? T.orange : T.purple, sub: specOver > 0 ? `⚠ over ${settings.specCap}% size` : `✓ ${specPct.toFixed(2)}% of core` },
             ].map(s => (
               <div key={s.label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
@@ -1692,7 +1691,7 @@ export default function App() {
             {/* Asset Values Overview */}
             <p style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1.5, margin: "0 0 12px" }}>Asset Values Overview</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-              {[...normalizedAssets].sort((a, b) => b.currentValue - a.currentValue).map(a => (
+              {[...investments].sort((a, b) => b.currentValue - a.currentValue).map(a => (
                 <div key={a.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 2px", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name.split(" (")[0]}</p>
                   <p style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: a.color }}>฿{fmt(a.currentValue)}</p>
