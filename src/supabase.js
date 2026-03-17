@@ -129,6 +129,16 @@ export async function deleteTransaction(id) {
   return true;
 }
 
+/**
+ * Update a transaction by id.
+ */
+export async function updateTransaction(id, updates) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('transactions').update(updates).eq('id', id).select().single();
+  if (error) { console.error('[Transactions] update error:', error.message); return null; }
+  return data;
+}
+
 // ─── Portfolio Snapshot Helpers ───────────────────────────────────────────────
 
 /**

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
-import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, deleteTransaction, getPortfolioSnapshots } from "./supabase.js";
+import { loadPortfolio, savePortfolio, getDeviceId, supabase, getPriceCache, isCacheStale, getTransactions, addTransaction, updateTransaction, deleteTransaction, getPortfolioSnapshots } from "./supabase.js";
 import Auth from "./Auth.jsx";
 import AIChat from "./AIChat.jsx";
 import { fetchCurrentNAV } from "./finnomenaService.js";
@@ -353,17 +353,60 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
 }
 
 // ─── ADD INVESTMENT MODAL ──────────────────────────────────────────────────
-function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
+// ─── ADD INVESTMENT MODAL ──────────────────────────────────────────────────
+function AddInvestmentModal({ asset, subAsset, initialTx, onSave, onClose, usdThbRate }) {
   const target = subAsset || asset;
   const isUSD = target.currency === "USD";
   const rate = usdThbRate || 35;
   const isFund = !!target.finnomenaCode?.trim();
   const isStock = !!target.yahooSymbol?.trim() || STOCK_GROUP_TYPES.has(target.type) || target.type === "stock" || target.type === "us_stocks" || target.type === "thai_stocks";
 
+  // When editing, initialTx fields might be negative (for sells).
+  // We want to work with positive values in the form UI and handle negating on submit.
   const [form, setForm] = useState({
-    type: "buy", amount: "", units: "", qty: "", date: new Date().toISOString().split("T")[0], notes: ""
+    type: initialTx?.type || "buy",
+    amount: initialTx ? Math.abs(isUSD ? initialTx.amount_usd : initialTx.amount_thb) : "",
+    units: initialTx ? Math.abs(initialTx.units || 0) : "",
+    qty: initialTx ? Math.abs(initialTx.qty || 0) : "",
+    price: initialTx?.price_per_unit || "",
+    date: initialTx?.date || new Date().toISOString().split("T")[0],
+    notes: initialTx?.notes || ""
   });
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // If price is missing but we have amount and units/qty, derive it for the UI
+  useEffect(() => {
+    if (initialTx && !initialTx.price_per_unit) {
+      const amt = Math.abs(isUSD ? initialTx.amount_usd : initialTx.amount_thb);
+      const uCount = Math.abs(initialTx.units || initialTx.qty || 0);
+      if (amt > 0 && uCount > 0) {
+        setForm(f => ({ ...f, price: +(amt / uCount).toFixed(4) }));
+      }
+    }
+  }, [initialTx, isUSD]);
+
+  const set = (k, v) => {
+    setForm(p => {
+      const next = { ...p, [k]: v };
+
+      // Auto-calculate logic
+      const a = parseFloat(k === 'amount' ? v : next.amount) || 0;
+      const pr = parseFloat(k === 'price' ? v : next.price) || 0;
+      const u = parseFloat(k === 'units' ? v : next.units) || 0;
+      const q = parseFloat(k === 'qty' ? v : next.qty) || 0;
+
+      if (k === 'amount' || k === 'price') {
+        if (pr > 0) {
+          if (isFund) next.units = +(a / pr).toFixed(4);
+          else if (isStock) next.qty = +(a / pr).toFixed(4);
+        }
+      } else if (k === 'units' || k === 'qty') {
+        if (pr > 0) {
+          next.amount = +((isFund ? u : q) * pr).toFixed(2);
+        }
+      }
+      return next;
+    });
+  };
 
   const handleSubmit = async () => {
     const amt = parseFloat(form.amount) || 0;
@@ -371,11 +414,13 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
 
     // Construct the transaction object
     const tx = {
+      ...(initialTx?.id ? { id: initialTx.id } : {}), // Keep ID if editing
       asset_id: asset.id,
       sub_asset_id: subAsset?.id || null,
       type: form.type,
       currency: target.currency || 'THB',
       date: form.date,
+      price_per_unit: parseFloat(form.price) || null,
       notes: form.notes.trim() || null,
     };
 
@@ -398,7 +443,7 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
   };
 
   return (
-    <Modal title={`Log Transaction — ${target.name}`} onClose={onClose}>
+    <Modal title={initialTx ? `Edit Transaction — ${target.name}` : `Log Transaction — ${target.name}`} onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="Transaction Type">
           <select style={selectStyle} value={form.type} onChange={e => set("type", e.target.value)}>
@@ -413,9 +458,12 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
           <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
+        </Field>
+        <Field label={isFund ? "NAV (Price)" : "Price per Share"}>
+          <input style={inputStyle} type="number" step="0.0001" value={form.price} onChange={e => set("price", e.target.value)} placeholder="0.0000" />
         </Field>
         {isFund && (
           <Field label="Units">
@@ -441,14 +489,15 @@ function AddInvestmentModal({ asset, subAsset, onSave, onClose, usdThbRate }) {
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
         <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontSize: 14, fontFamily: "inherit" }}>Cancel</button>
-        <button onClick={handleSubmit} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>Save Transaction</button>
+        <button onClick={handleSubmit} style={{ flex: 2, padding: "11px 0", borderRadius: 10, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "inherit" }}>{initialTx ? "Save Changes" : "Save Transaction"}</button>
       </div>
     </Modal>
   );
 }
 
 // ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
-function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, isUSD, snapshots }) {
+// ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
+function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots }) {
   const name = subAsset ? subAsset.name : asset.name;
   const targetId = subAsset ? subAsset.id : asset.id;
 
@@ -497,7 +546,7 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
         </div>
       ) : (
         <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "8px 12px", background: T.surface, fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.5fr 3fr 3fr 70px", padding: "8px 12px", background: T.surface, fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border}` }}>
             <div>DATE</div>
             <div>TYPE</div>
             <div style={{ textAlign: "right" }}>AMOUNT</div>
@@ -510,7 +559,7 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
               const amt = isUSD ? tx.amount_usd : tx.amount_thb;
               const color = isSell ? T.orange : (tx.type === 'dividend' ? T.green : T.text);
               return (
-                <div key={tx.id} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 3fr 3fr 1fr", padding: "10px 12px", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}55`, alignItems: "center" }}>
+                <div key={tx.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1.5fr 3fr 3fr 70px", padding: "10px 12px", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}55`, alignItems: "center" }}>
                   <div style={{ color: T.dim }}>{new Date(tx.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</div>
                   <div style={{ textTransform: "capitalize", color }}>{tx.type}</div>
                   <div style={{ textAlign: "right", color }}>
@@ -519,8 +568,9 @@ function TransactionHistory({ asset, subAsset, transactions, onDelete, onClose, 
                   <div style={{ textAlign: "right", color: T.muted }}>
                     {tx.units ? fmt(Math.abs(tx.units), 4) : tx.qty ? fmt(Math.abs(tx.qty), 4) : '-'}
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <button onClick={() => { if (window.confirm("Delete transaction?")) onDelete(tx.id); }} style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", opacity: 0.5 }} title="Delete">✕</button>
+                  <div style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button onClick={() => onEdit(tx)} style={{ background: "transparent", border: "none", color: T.accent, cursor: "pointer", opacity: 0.7, padding: 0 }} title="Edit">✏️</button>
+                    <button onClick={() => { if (window.confirm("Delete transaction?")) onDelete(tx.id); }} style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", opacity: 0.5, padding: 0 }} title="Delete">✕</button>
                   </div>
                 </div>
               );
@@ -1329,19 +1379,35 @@ export default function App() {
   const saveTransaction = async (tx) => {
     try {
       setSaveStatus("saving");
-      let createdTx = tx;
-      if (supabase) {
-        createdTx = await addTransaction({ ...tx, user_id: userId });
-      } else {
-        createdTx = { ...tx, user_id: userId, id: uid() };
-      }
-      if (createdTx) {
-        setTransactions(prev => [createdTx, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      let savedTx = tx;
 
-        // Auto-migration for legacy assets:
-        // By adding a transaction, the derived logic will now take over.
-        // We don't need to actually zero out the asset's stored `invested` or `units` because the derived logic just ignores them if transactions > 0.
+      if (tx.id) {
+        // Update existing
+        if (supabase) {
+          savedTx = await updateTransaction(tx.id, { ...tx, user_id: userId });
+        } else {
+          savedTx = { ...tx, user_id: userId };
+        }
+
+        if (savedTx) {
+          setTransactions(prev => prev.map(t => t.id === savedTx.id ? savedTx : t).sort((a, b) => new Date(b.date) - new Date(a.date)));
+        }
+      } else {
+        // Add new
+        if (supabase) {
+          savedTx = await addTransaction({ ...tx, user_id: userId });
+        } else {
+          savedTx = { ...tx, user_id: userId, id: uid() };
+        }
+
+        if (savedTx) {
+          setTransactions(prev => [savedTx, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+        }
       }
+
+      // Auto-migration for legacy assets:
+      // By adding a transaction, the derived logic will now take over.
+      // We don't need to actually zero out the asset's stored `invested` or `units` because the derived logic just ignores them if transactions > 0.
       setTxModal(null);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(null), 2000);
@@ -1923,6 +1989,7 @@ export default function App() {
         <AddInvestmentModal
           asset={txModal.asset}
           subAsset={txModal.subAsset}
+          initialTx={txModal.initialTx}
           usdThbRate={usdThbRate}
           onSave={saveTransaction}
           onClose={() => setTxModal(null)}
@@ -1938,6 +2005,10 @@ export default function App() {
             : transactions.filter(t => t.asset_id === historyModal.asset.id)}
           snapshots={snapshots}
           onDelete={deleteTx}
+          onEdit={tx => {
+            setTxModal({ asset: historyModal.asset, subAsset: historyModal.subAsset, initialTx: tx });
+            setHistoryModal(null);
+          }}
           isUSD={historyModal.isUSD}
           onClose={() => setHistoryModal(null)}
         />
