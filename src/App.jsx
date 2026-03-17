@@ -1898,7 +1898,7 @@ export default function App() {
             { label: "All", days: 0 },
           ];
           const firstVal = snapshots[0]?.total_invest_thb ?? 0;
-          const lastVal = snapshots[snapshots.length - 1]?.total_invest_thb ?? 0;
+          const lastVal = totalInvest; // Use live value instead of stale snapshot
           const change = lastVal - firstVal;
           const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
           const pnlColor = change >= 0 ? T.green : T.red;
@@ -1908,6 +1908,18 @@ export default function App() {
             value: s.total_invest_thb,
             pnl: i === 0 ? 0 : +(s.total_invest_thb - snapshots[i - 1].total_invest_thb).toFixed(2),
           }));
+
+          // Replace/Append live value to the end of the chart data
+          if (pnlData.length > 0) {
+            const lastIdx = pnlData.length - 1;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (pnlData[lastIdx].date === todayStr) {
+              pnlData[lastIdx].value = lastVal;
+              if (lastIdx > 0) {
+                pnlData[lastIdx].pnl = +(lastVal - pnlData[lastIdx - 1].value).toFixed(2);
+              }
+            }
+          }
 
           return (
             <div>
