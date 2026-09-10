@@ -15,6 +15,9 @@ function PerfTooltip({ active, payload }) {
       <p style={{ margin: "2px 0", color: d.marketGain >= 0 ? T.green : "#ef4444" }}>
         Market gain: {d.marketGain >= 0 ? "+" : ""}฿{fmt(d.marketGain)}
       </p>
+      {d.benchmark != null && (
+        <p style={{ margin: "2px 0", color: T.cyan }}>SET (scaled): ฿{fmt(d.benchmark)}</p>
+      )}
     </div>
   );
 }
@@ -50,6 +53,7 @@ export default function PerformanceChart({ series }) {
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
           <Area type="monotone" dataKey="contributed" name="Net contributed" stroke={T.muted} fill="transparent" strokeWidth={2} strokeDasharray="5 4" dot={false} />
           <Area type="monotone" dataKey="value" name="Portfolio value" stroke={T.accent} fill="url(#valGrad)" strokeWidth={2} dot={false} />
+          <Area type="monotone" dataKey="benchmark" name="SET index (scaled)" stroke={T.cyan} fill="transparent" strokeWidth={1.5} strokeDasharray="3 3" dot={false} connectNulls />
         </AreaChart>
       </ResponsiveContainer>
     </div>

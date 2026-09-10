@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import Auth from "../Auth.jsx";
 import AIChat from "../AIChat.jsx";
@@ -6,6 +7,8 @@ import { TABS, STOCK_GROUP_TYPES } from "../domain/portfolio/constants.js";
 import { calcPL } from "../domain/portfolio/assetCalculations.js";
 import { buildPnlData } from "../domain/portfolio/snapshotSeries.js";
 import { buildPerformanceSeries, formatPriceAge } from "../domain/portfolio/performance.js";
+import { buildBenchmarkSeries, mergeBenchmarkIntoSeries } from "../domain/portfolio/benchmark.js";
+import { fetchHistoricalDailyCloses } from "../infrastructure/external/yahooFinanceService.js";
 import { T, inputStyle } from "./theme/tokens.js";
 import { fmt, fmtTs } from "./utils/format.js";
 import SaveBadge from "./components/common/SaveBadge.jsx";
@@ -92,7 +95,28 @@ export default function App() {
     deleteTx,
     reorderAssets,
     resetToDefaults,
+    showClosed,
+    setShowClosed,
+    closedAssets,
   } = app;
+
+  const [perfWithBenchmark, setPerfWithBenchmark] = useState([]);
+
+  useEffect(() => {
+    if (tab !== "history" || !snapshots.length) {
+      setPerfWithBenchmark([]);
+      return;
+    }
+    const base = buildPerformanceSeries(snapshots, transactions, coreAssetIds, totalInvest);
+    const from = snapshots[0].snapshot_date;
+    const to = snapshots[snapshots.length - 1].snapshot_date;
+    fetchHistoricalDailyCloses("^SET.BK", from, to)
+      .then(closes => {
+        const bench = buildBenchmarkSeries(snapshots, closes);
+        setPerfWithBenchmark(mergeBenchmarkIntoSeries(base, bench));
+      })
+      .catch(() => setPerfWithBenchmark(base));
+  }, [tab, snapshots, transactions, coreAssetIds, totalInvest]);
 
   if (isAuthLoading || (userId && loadStatus === "loading")) {
     return (
@@ -109,7 +133,9 @@ export default function App() {
   }
 
   const pnlData = buildPnlData(snapshots, totalInvest);
-  const perfSeries = buildPerformanceSeries(snapshots, transactions, coreAssetIds, totalInvest);
+  const perfSeries = perfWithBenchmark.length
+    ? perfWithBenchmark
+    : buildPerformanceSeries(snapshots, transactions, coreAssetIds, totalInvest);
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "'Inter', sans-serif" }}>
@@ -292,6 +318,38 @@ export default function App() {
                 </div>
               );
             })}
+
+            {closedAssets.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <button
+                  onClick={() => setShowClosed(v => !v)}
+                  style={{
+                    width: "100%", padding: "10px 14px", borderRadius: 10,
+                    border: `1px solid ${T.border}`, background: T.surface,
+                    color: T.muted, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                    fontFamily: "inherit", textAlign: "left",
+                  }}
+                >
+                  {showClosed ? "▾" : "▸"} Closed positions ({closedAssets.length})
+                </button>
+                {showClosed && closedAssets.map(a => (
+                  <div key={a.id} style={{ opacity: 0.75, marginTop: 8 }}>
+                    <AssetCard
+                      asset={a}
+                      total={totalInvest || 1}
+                      usdThbRate={usdThbRate}
+                      onEdit={() => { setEditingAsset(a); setModal("edit"); }}
+                      onUpdateValue={() => { setEditingAsset(a); setModal("update"); }}
+                      onDelete={() => deleteAsset(a.id)}
+                      onAddInvestment={() => setTxModal({ asset: a })}
+                      onShowHistory={() => setHistoryModal({ asset: a, isUSD: a.currency === "USD" })}
+                      transactions={transactions.filter(t => t.asset_id === a.id)}
+                      onDeleteTx={deleteTx}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -411,7 +469,7 @@ export default function App() {
               <div style={{ textAlign: "center", padding: 40, color: T.muted }}>
                 <p style={{ fontSize: 32, marginBottom: 12 }}>📊</p>
                 <p>No snapshot data yet. Snapshots are recorded automatically at midnight ICT each day.</p>
-                <p style={{ fontSize: 12, marginTop: 8, color: T.dim }}>You can also trigger the GitHub Action manually to create today's first snapshot.</p>
+                <p style={{ fontSize: 12, marginTop: 8, color: T.dim }}>Snapshots run every 3 hours via GitHub Actions. To fill historical gaps, run the <strong>Backfill portfolio snapshots</strong> workflow in GitHub Actions.</p>
               </div>
             )}
 

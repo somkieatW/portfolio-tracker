@@ -1,0 +1,46 @@
+name: Backfill portfolio snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        default: "2026-07-01"
+      to_date:
+        description: "End date (YYYY-MM-DD), default = yesterday ICT"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run only (no writes)"
+        type: boolean
+        default: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Sanitize legacy Yahoo symbols
+        run: node scripts/sanitize-portfolio-symbols.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      - name: Backfill missing snapshots
+        run: |
+          ARGS="--from=${{ inputs.from_date }}"
+          if [ -n "${{ inputs.to_date }}" ]; then ARGS="$ARGS --to=${{ inputs.to_date }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          node scripts/backfill-portfolio-snapshots.js $ARGS
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
