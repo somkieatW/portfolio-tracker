@@ -1,3 +1,5 @@
+import { normalizeYahooSymbol } from "./yahooSymbol.js";
+
 // ─── Yahoo Finance Stock Price Service ────────────────────────────────────────
 // Fetches real-time stock prices via Yahoo Finance's public JSON API.
 //
@@ -33,7 +35,9 @@ async function yahooFetch(path) {
  * @returns {{ price, currency, symbol, date } | null}
  */
 export async function fetchStockPrice(symbol) {
-    const path = `/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d&includePrePost=false`;
+    const sym = normalizeYahooSymbol(symbol);
+    if (!sym) return null;
+    const path = `/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d&includePrePost=false`;
     const json = await yahooFetch(path);
     const meta = json?.chart?.result?.[0]?.meta;
     if (!meta?.regularMarketPrice) return null;
@@ -83,7 +87,7 @@ export async function fetchSubAssetPrices(subAssets) {
     await Promise.allSettled(
         targets.map(async (sub) => {
             try {
-                const data = await fetchStockPrice(sub.yahooSymbol.trim());
+                const data = await fetchStockPrice(sub.yahooSymbol);
                 if (!data) return;
                 const isUSD = data.currency === "USD" || sub.currency === "USD";
                 const rate = isUSD ? (usdThbRate ?? 33) : 1;

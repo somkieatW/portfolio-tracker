@@ -12,6 +12,8 @@
  *   SUPABASE_SERVICE_KEY  — service role key (bypasses RLS)
  */
 
+import { normalizeYahooSymbol } from '../src/yahooSymbol.js';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const YAHOO_BASE = 'https://query1.finance.yahoo.com';
@@ -62,14 +64,16 @@ async function discoverSymbols() {
             }
             // Top-level Yahoo symbol (e.g., Gold, Crypto, standalone stocks)
             if (asset.yahooSymbol?.trim()) {
+                const sym = normalizeYahooSymbol(asset.yahooSymbol);
                 const type = asset.currency === 'USD' ? 'us_stock' : (asset.type === 'gold' ? 'commodity' : 'other');
-                yahooSymbols.set(asset.yahooSymbol.trim(), type);
+                yahooSymbols.set(sym, type);
             }
             // Sub-assets inside stock groups
             for (const sub of asset.subAssets || []) {
                 if (sub.yahooSymbol?.trim()) {
+                    const sym = normalizeYahooSymbol(sub.yahooSymbol);
                     const type = sub.currency === 'USD' ? 'us_stock' : 'thai_stock';
-                    yahooSymbols.set(sub.yahooSymbol.trim(), type);
+                    yahooSymbols.set(sym, type);
                 }
             }
         }

@@ -5,6 +5,7 @@ import Auth from "./Auth.jsx";
 import AIChat from "./AIChat.jsx";
 import { fetchCurrentNAV } from "./finnomenaService.js";
 import { fetchStockPrice, fetchUSDTHBRate } from "./yahooFinanceService.js";
+import { normalizeYahooSymbol, getCacheEntry } from "./yahooSymbol.js";
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const T = {
@@ -147,6 +148,10 @@ function sanitizeAsset(a, rate) {
 
   const clean = { ...a };
 
+  if (clean.yahooSymbol?.trim()) {
+    clean.yahooSymbol = normalizeYahooSymbol(clean.yahooSymbol);
+  }
+
   // 1. Force numeric values
   if (clean.invested !== undefined) clean.invested = Number(Number(clean.invested).toFixed(2));
   if (clean.currentValue !== undefined) clean.currentValue = Number(Number(clean.currentValue).toFixed(2));
@@ -286,7 +291,7 @@ function AssetForm({ initial, onSave, onClose, usdThbRate, hasTransactions }) {
       units: unitsFinal,
       finnomenaCode: form.finnomenaCode.trim(),
       qty: qtyFinal,
-      yahooSymbol: form.yahooSymbol.trim()
+      yahooSymbol: normalizeYahooSymbol(form.yahooSymbol)
     }, rate);
 
     onSave(payload);
@@ -549,48 +554,30 @@ function AddInvestmentModal({ asset, subAsset, initialTx, onSave, onClose, usdTh
 }
 
 // ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
-// ─── TRANSACTION HISTORY MODAL ───────────────────────────────────────────────
-function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots }) {
+function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots, liveValue, snapshotRange, setSnapshotRange, snapshotLoading }) {
   const name = subAsset ? subAsset.name : asset.name;
   const targetId = subAsset ? subAsset.id : asset.id;
-
-  // Extract snapshot data for this specific asset
-  const chartData = (snapshots || []).map(snap => {
-    // Find the specific asset in the snapshot's breakdown
-    const assetData = (snap.asset_breakdown || []).find(a => a.id === targetId);
-    return {
-      date: snap.snapshot_date,
-      value: assetData ? assetData.currentValue : 0,
-      invested: assetData ? assetData.invested : 0,
-    };
-  }).filter(d => d.value > 0 || d.invested > 0); // Hide days before asset existed
+  const assetRows = buildAssetSnapshotRows(snapshots, targetId);
+  const pnlData = buildPnlData(assetRows, liveValue);
+  const lastVal = liveValue ?? pnlData[pnlData.length - 1]?.close ?? 0;
 
   return (
     <Modal title={`History — ${name}`} onClose={onClose}>
-      {chartData.length > 0 ? (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 16 }}>
-          <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Value vs Invested</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="assetValGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={T.accent} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={T.accent} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
-              <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
-              <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
-              <Tooltip formatter={(v, n) => [`฿${fmt(v)}`, n === 'value' ? 'Current Value' : 'Invested']} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8, fontSize: 12 }} />
-              <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#assetValGrad)" strokeWidth={2} dot={false} />
-              <Area type="step" dataKey="invested" stroke={T.muted} fill="transparent" strokeWidth={2} strokeDasharray="4 4" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
+      <SnapshotRangeSelector snapshotRange={snapshotRange} setSnapshotRange={setSnapshotRange} />
+
+      {snapshotLoading ? (
+        <div style={{ textAlign: "center", padding: 30, color: T.muted, fontSize: 13, marginBottom: 16 }}>Loading history…</div>
+      ) : pnlData.length === 0 ? (
         <div style={{ padding: "30px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13, color: T.muted, textAlign: "center", marginBottom: 16 }}>
           No snapshot history available for this asset yet.
         </div>
+      ) : (
+        <SnapshotChartPanel
+          pnlData={pnlData}
+          lastVal={lastVal}
+          snapshotRange={snapshotRange}
+          candleTitle="Asset Value History (1D)"
+        />
       )}
 
       {!transactions?.length ? (
@@ -798,7 +785,7 @@ function StockSubForm({ initial, onSave, onClose, usdThbRate, hasTransactions })
       invested: investedFinal,
       currentValue: currentValueFinal,
       qty: qtyFinal,
-      yahooSymbol: form.yahooSymbol.trim()
+      yahooSymbol: normalizeYahooSymbol(form.yahooSymbol)
     }, rate);
 
     onSave(payload);
@@ -1064,6 +1051,202 @@ const Candle = (props) => {
   );
 };
 
+const SNAPSHOT_RANGES = [
+  { label: "7D", days: 7 },
+  { label: "30D", days: 30 },
+  { label: "90D", days: 90 },
+  { label: "1Y", days: 365 },
+  { label: "All", days: 0 },
+];
+
+function buildAssetSnapshotRows(snapshots, targetId) {
+  return (snapshots || [])
+    .map(snap => {
+      const entry = (snap.asset_breakdown || []).find(a => a.id === targetId);
+      if (!entry || (entry.currentValue <= 0 && entry.invested <= 0)) return null;
+      return {
+        snapshot_date: snap.snapshot_date,
+        total_invest_thb: entry.currentValue,
+        o_invest_thb: entry.o ?? entry.currentValue,
+        h_invest_thb: entry.h ?? entry.currentValue,
+        l_invest_thb: entry.l ?? entry.currentValue,
+      };
+    })
+    .filter(Boolean);
+}
+
+function ictTodayStr() {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Chain each day's open to the previous day's close for continuous candles. */
+function chainDailyOpens(pnlData) {
+  for (let i = 1; i < pnlData.length; i++) {
+    const prevClose = pnlData[i - 1].close;
+    const d = pnlData[i];
+    d.open = prevClose;
+    d.high = Math.max(d.high, prevClose, d.close);
+    d.low = Math.min(d.low, prevClose, d.close);
+  }
+  return pnlData;
+}
+
+function buildPnlData(snapshots, liveClose) {
+  if (!snapshots?.length) return [];
+  const pnlData = snapshots.map((s, i) => {
+    const o = s.o_invest_thb ?? s.total_invest_thb;
+    const h = s.h_invest_thb ?? s.total_invest_thb;
+    const l = s.l_invest_thb ?? s.total_invest_thb;
+    const c = s.total_invest_thb;
+    return {
+      date: s.snapshot_date,
+      open: o,
+      high: h,
+      low: l,
+      close: c,
+      value: c,
+      pnl: i === 0 ? 0 : +(c - snapshots[i - 1].total_invest_thb).toFixed(2),
+    };
+  });
+
+  chainDailyOpens(pnlData);
+
+  if (liveClose != null && pnlData.length > 0) {
+    const lastIdx = pnlData.length - 1;
+    const todayStr = ictTodayStr();
+    if (pnlData[lastIdx].date === todayStr) {
+      const d = pnlData[lastIdx];
+      if (lastIdx > 0) d.open = pnlData[lastIdx - 1].close;
+      d.close = liveClose;
+      d.high = Math.max(d.high, d.open, liveClose);
+      d.low = Math.min(d.low, d.open, liveClose);
+      d.value = liveClose;
+      d.pnl = lastIdx > 0
+        ? +(liveClose - pnlData[lastIdx - 1].close).toFixed(2)
+        : 0;
+    }
+  }
+
+  return pnlData;
+}
+
+function SnapshotRangeSelector({ snapshotRange, setSnapshotRange }) {
+  return (
+    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      {SNAPSHOT_RANGES.map(r => (
+        <button
+          key={r.label}
+          onClick={() => setSnapshotRange(r.days)}
+          style={{
+            flex: 1, padding: "8px 0", borderRadius: 8,
+            border: `1px solid ${snapshotRange === r.days ? T.accent : T.border}`,
+            background: snapshotRange === r.days ? T.accentGlow : "transparent",
+            color: snapshotRange === r.days ? T.accent : T.muted,
+            cursor: "pointer", fontFamily: "inherit", fontSize: 12,
+            fontWeight: snapshotRange === r.days ? 700 : 400,
+          }}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function OhlcTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const isUp = d.close >= d.open;
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.border}`, padding: "10px", borderRadius: 8, fontSize: 11 }}>
+      <p style={{ margin: "0 0 6px", fontWeight: 700, color: T.muted }}>{d.date}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+        <span>Open:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.open)}</span>
+        <span>High:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.high)}</span>
+        <span>Low:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.low)}</span>
+        <span>Close:</span> <span style={{ textAlign: "right", fontWeight: 700, color: isUp ? T.green : T.red }}>฿{fmt(d.close)}</span>
+      </div>
+    </div>
+  );
+}
+
+function SnapshotChartPanel({ pnlData, lastVal, snapshotRange, candleTitle = "Value History (1D)" }) {
+  const firstVal = pnlData[0]?.close ?? 0;
+  const change = lastVal - firstVal;
+  const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
+  const pnlColor = change >= 0 ? T.green : T.red;
+  const rangeLabel = SNAPSHOT_RANGES.find(r => r.days === snapshotRange)?.label ?? "All";
+
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+          { label: "Change", value: `${change >= 0 ? "+" : "-"}฿${fmt(Math.abs(change))}`, color: pnlColor },
+          { label: `Return (${rangeLabel})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
+        ].map(s => (
+          <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
+            <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
+        <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{candleTitle}</p>
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart data={pnlData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+            <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
+            <YAxis
+              stroke={T.muted}
+              tick={{ fontSize: 9 }}
+              tickFormatter={v => `฿${(v / 1000).toFixed(1)}k`}
+              width={48}
+              domain={[(dataMin) => dataMin - 600, (dataMax) => dataMax + 600]}
+              allowDataOverflow={true}
+            />
+            <Tooltip content={<OhlcTooltip />} />
+            <Line dataKey="high" stroke="none" dot={false} connectNulls />
+            <Line dataKey="low" stroke="none" dot={false} connectNulls />
+            <Bar
+              dataKey={(d) => [d.open, d.close]}
+              barSize={12}
+              stroke={T.border}
+              shape={(props) => (
+                <Candle
+                  {...props}
+                  open={props.payload.open}
+                  close={props.payload.close}
+                  high={props.payload.high}
+                  low={props.payload.low}
+                />
+              )}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 16 }}>
+        <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Daily P&amp;L</p>
+        <ResponsiveContainer width="100%" height={140}>
+          <BarChart data={pnlData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+            <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
+            <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
+            <Tooltip content={<PnLTooltip />} />
+            <Bar dataKey="pnl" radius={[4, 4, 0, 0]} barSize={16}>
+              {pnlData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? T.green : T.red} opacity={0.8} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+}
+
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1145,9 +1328,9 @@ export default function App() {
       const symbols = new Set();
       for (const a of assets) {
         if (a.finnomenaCode?.trim()) symbols.add(a.finnomenaCode.trim());
-        if (a.yahooSymbol?.trim()) symbols.add(a.yahooSymbol.trim());
+        if (a.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(a.yahooSymbol));
         for (const sub of a.subAssets || []) {
-          if (sub.yahooSymbol?.trim()) symbols.add(sub.yahooSymbol.trim());
+          if (sub.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(sub.yahooSymbol));
         }
       }
       // Always include USDTHB=X so we can display USD values
@@ -1179,20 +1362,22 @@ export default function App() {
           return { ...a, currentValue: newVal, navUpdatedAt: row.updated_at };
         }
         // Yahoo finance on a regular asset
-        if (a.yahooSymbol?.trim() && cache.has(a.yahooSymbol.trim())) {
-          const row = cache.get(a.yahooSymbol.trim());
-          const px = row.currency === "USD" && cache.has("USDTHB=X") ? row.price * cache.get("USDTHB=X").price : row.price;
+        const yahooRow = a.yahooSymbol?.trim() ? getCacheEntry(cache, a.yahooSymbol) : null;
+        if (yahooRow) {
+          const usdRow = getCacheEntry(cache, "USDTHB=X");
+          const px = yahooRow.currency === "USD" && usdRow ? yahooRow.price * usdRow.price : yahooRow.price;
           const newVal = a.qty > 0 ? +(a.qty * px).toFixed(2) : a.currentValue;
-          return { ...a, currentValue: newVal, priceUpdatedAt: row.updated_at };
+          return { ...a, currentValue: newVal, priceUpdatedAt: yahooRow.updated_at };
         }
         // Stock group — update sub-assets
         if ((a.subAssets || []).length > 0) {
           return {
             ...a,
             subAssets: a.subAssets.map(sub => {
-              if (!sub.yahooSymbol?.trim() || !cache.has(sub.yahooSymbol.trim())) return sub;
-              const row = cache.get(sub.yahooSymbol.trim());
-              const px = row.currency === "USD" && cache.has("USDTHB=X") ? row.price * cache.get("USDTHB=X").price : row.price;
+              const row = sub.yahooSymbol?.trim() ? getCacheEntry(cache, sub.yahooSymbol) : null;
+              if (!row) return sub;
+              const usdRow = getCacheEntry(cache, "USDTHB=X");
+              const px = row.currency === "USD" && usdRow ? row.price * usdRow.price : row.price;
               const newVal = sub.qty > 0 ? +(sub.qty * px).toFixed(2) : sub.currentValue;
               return { ...sub, currentValue: newVal, priceDate: row.price_date, priceUpdatedAt: row.updated_at };
             }),
@@ -1391,9 +1576,10 @@ export default function App() {
 
     // Smart cache-on-save for Yahoo top-level assets
     if (asset.yahooSymbol?.trim() && asset.qty > 0 && supabase) {
-      const sym = asset.yahooSymbol.trim();
+      const sym = normalizeYahooSymbol(asset.yahooSymbol);
       const cached = await getPriceCache([sym]);
-      if (!cached.has(sym) || isCacheStale(cached.get(sym)?.updated_at)) {
+      const cachedRow = getCacheEntry(cached, sym);
+      if (!cachedRow || isCacheStale(cachedRow.updated_at)) {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
@@ -1466,9 +1652,10 @@ export default function App() {
 
     // Smart cache-on-save for Yahoo stocks
     if (sub.yahooSymbol?.trim() && sub.qty > 0 && supabase) {
-      const sym = sub.yahooSymbol.trim();
+      const sym = normalizeYahooSymbol(sub.yahooSymbol);
       const cached = await getPriceCache([sym]);
-      if (!cached.has(sym) || isCacheStale(cached.get(sym)?.updated_at)) {
+      const cachedRow = getCacheEntry(cached, sym);
+      if (!cachedRow || isCacheStale(cachedRow.updated_at)) {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
@@ -1598,7 +1785,7 @@ export default function App() {
         console.error("Failed to load snapshots:", err);
         setSnapshotLoading(false);
       });
-  }, [tab, userId, snapshotRange]);
+  }, [tab, userId, snapshotRange, historyModal]);
 
   // ── Loading screen ──
   if (isAuthLoading || (userId && loadStatus === "loading")) {
@@ -1924,61 +2111,12 @@ export default function App() {
 
         {/* HISTORY */}
         {tab === "history" && (() => {
-          const RANGES = [
-            { label: "7D", days: 7 },
-            { label: "30D", days: 30 },
-            { label: "90D", days: 90 },
-            { label: "1Y", days: 365 },
-            { label: "All", days: 0 },
-          ];
-          const firstVal = snapshots[0]?.total_invest_thb ?? 0;
-          const lastVal = totalInvest; // Use live value instead of stale snapshot
-          const change = lastVal - firstVal;
-          const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
-          const pnlColor = change >= 0 ? T.green : T.red;
-
-          const pnlData = snapshots.map((s, i) => {
-            const o = s.o_invest_thb ?? s.total_invest_thb;
-            const h = s.h_invest_thb ?? s.total_invest_thb;
-            const l = s.l_invest_thb ?? s.total_invest_thb;
-            const c = s.total_invest_thb;
-
-            return {
-              date: s.snapshot_date,
-              open: o,
-              high: h,
-              low: l,
-              close: c,
-              // for tooltips and range calculation
-              value: c,
-              pnl: i === 0 ? 0 : +(c - snapshots[i - 1].total_invest_thb).toFixed(2),
-            };
-          });
-
-          // Replace/Update live value for today
-          if (pnlData.length > 0) {
-            const lastIdx = pnlData.length - 1;
-            const todayStr = new Date().toISOString().slice(0, 10);
-            if (pnlData[lastIdx].date === todayStr) {
-              const d = pnlData[lastIdx];
-              d.close = lastVal;
-              d.high = Math.max(d.high, lastVal);
-              d.low = Math.min(d.low, lastVal);
-              d.value = lastVal;
-              if (lastIdx > 0) {
-                d.pnl = +(lastVal - pnlData[lastIdx - 1].close).toFixed(2);
-              }
-            }
-          }
+          const lastVal = totalInvest;
+          const pnlData = buildPnlData(snapshots, lastVal);
 
           return (
             <div>
-              {/* Range selector */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                {RANGES.map(r => (
-                  <button key={r.label} onClick={() => setSnapshotRange(r.days)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${snapshotRange === r.days ? T.accent : T.border}`, background: snapshotRange === r.days ? T.accentGlow : "transparent", color: snapshotRange === r.days ? T.accent : T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: snapshotRange === r.days ? 700 : 400 }}>{r.label}</button>
-                ))}
-              </div>
+              <SnapshotRangeSelector snapshotRange={snapshotRange} setSnapshotRange={setSnapshotRange} />
 
               {snapshotLoading && (
                 <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>Loading history…</div>
@@ -1993,100 +2131,12 @@ export default function App() {
               )}
 
               {!snapshotLoading && snapshots.length > 0 && (
-                <>
-                  {/* Stats */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-                    {[
-                      { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
-                      { label: "Change", value: `${change >= 0 ? "+" : "-"}฿${fmt(Math.abs(change))}`, color: pnlColor },
-                      { label: `Return (${RANGES.find(r => r.days === snapshotRange)?.label ?? "All"})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
-                    ].map(s => (
-                      <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                        <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
-                        <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
-                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Net Worth History (1D)</p>
-                    <ResponsiveContainer width="100%" height={240}>
-                      <ComposedChart data={pnlData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
-                        <YAxis
-                          stroke={T.muted}
-                          tick={{ fontSize: 9 }}
-                          tickFormatter={v => `฿${(v / 1000).toFixed(1)}k`}
-                          width={48}
-                          domain={[(dataMin) => dataMin - 600, (dataMax) => dataMax + 600]}
-                          allowDataOverflow={true}
-                        />
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const d = payload[0].payload;
-                              const isUp = d.close >= d.open;
-                              return (
-                                <div style={{ background: T.card, border: `1px solid ${T.border}`, padding: "10px", borderRadius: 8, fontSize: 11 }}>
-                                  <p style={{ margin: "0 0 6px", fontWeight: 700, color: T.muted }}>{d.date}</p>
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
-                                    <span>Open:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.open)}</span>
-                                    <span>High:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.high)}</span>
-                                    <span>Low:</span> <span style={{ textAlign: "right", fontWeight: 600 }}>฿{fmt(d.low)}</span>
-                                    <span>Close:</span> <span style={{ textAlign: "right", fontWeight: 700, color: isUp ? T.green : T.red }}>฿{fmt(d.close)}</span>
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        {/* Invisible area to force Y-axis to cover Highs and Lows */}
-                        <Line dataKey="high" stroke="none" dot={false} connectNulls />
-                        <Line dataKey="low" stroke="none" dot={false} connectNulls />
-
-                        <Bar
-                          dataKey={(d) => [d.open, d.close]}
-                          barSize={12} // Thicker candles
-                          stroke={T.border} // Subtle stroke
-                          shape={(props) => (
-                            <Candle
-                              {...props}
-                              open={props.payload.open}
-                              close={props.payload.close}
-                              high={props.payload.high}
-                              low={props.payload.low}
-                            />
-                          )}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* Daily PnL Chart */}
-                  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px" }}>
-                    <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Daily P&amp;L</p>
-                    <ResponsiveContainer width="100%" height={140}>
-                      <BarChart data={pnlData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-                        <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
-                        <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
-                        <Tooltip content={<PnLTooltip />} />
-                        <Bar
-                          dataKey="pnl"
-                          radius={[4, 4, 0, 0]}
-                          barSize={16}
-                          fill={(d) => d.pnl >= 0 ? T.green : T.red}
-                        >
-                          {pnlData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? T.green : T.red} opacity={0.8} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
+                <SnapshotChartPanel
+                  pnlData={pnlData}
+                  lastVal={lastVal}
+                  snapshotRange={snapshotRange}
+                  candleTitle="Net Worth History (1D)"
+                />
               )}
             </div>
           );
@@ -2273,6 +2323,10 @@ export default function App() {
               ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
               : transactions.filter(t => t.asset_id === historyModal.asset.id)}
             snapshots={snapshots}
+            liveValue={historyModal.subAsset?.currentValue ?? historyModal.asset.currentValue}
+            snapshotRange={snapshotRange}
+            setSnapshotRange={setSnapshotRange}
+            snapshotLoading={snapshotLoading}
             onDelete={deleteTx}
             onEdit={tx => {
               setTxModal({ asset: historyModal.asset, subAsset: historyModal.subAsset, initialTx: tx });

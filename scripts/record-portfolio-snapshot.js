@@ -12,6 +12,8 @@
  *   SUPABASE_SERVICE_KEY  — service role key (bypasses RLS)
  */
 
+import { normalizeYahooSymbol } from '../src/yahooSymbol.js';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -55,7 +57,7 @@ function computeAssetValue(asset, priceCache) {
     if (STOCK_GROUP_TYPES.has(asset.type) && Array.isArray(asset.subAssets)) {
         let total = 0;
         for (const sub of asset.subAssets) {
-            const sym = sub.yahooSymbol?.trim();
+            const sym = normalizeYahooSymbol(sub.yahooSymbol);
             const price = sym ? priceCache.get(sym) : null;
             const qty = Number(sub.qty) || 0;
             if (price && qty > 0) {
@@ -77,9 +79,59 @@ function computeAssetValue(asset, priceCache) {
         if (nav && units > 0) return units * nav;
     }
 
-    // For all other assets (manual, forex, bonds, etc.), use the stored
-    // currentValue exactly — this matches what the frontend displays.
+    // Top-level Yahoo symbol (equity, gold, standalone stocks) — mirror frontend
+    if (asset.yahooSymbol?.trim()) {
+        const sym = normalizeYahooSymbol(asset.yahooSymbol);
+        const price = sym ? priceCache.get(sym) : null;
+        const qty = Number(asset.qty) || 0;
+        if (price && qty > 0) {
+            const isUSD = asset.currency === 'USD';
+            return isUSD ? qty * price * usdThb : qty * price;
+        }
+    }
+
+    // Manual, forex, bonds, etc. — use stored currentValue (matches frontend)
     return Number(asset.currentValue) || 0;
+}
+
+function computeSubAssetValue(sub, priceCache, usdThb) {
+    const sym = normalizeYahooSymbol(sub.yahooSymbol);
+    const price = sym ? priceCache.get(sym) : null;
+    const qty = Number(sub.qty) || 0;
+    if (price && qty > 0) {
+        const isUSD = sub.currency === 'USD';
+        return isUSD ? qty * price * usdThb : qty * price;
+    }
+    return Number(sub.currentValue) || 0;
+}
+
+/** Daily OHLC — open chains from previous close on first sync of the day. */
+function dailyOhlc(existing, currentVal, prevClose) {
+    let o, h, l;
+    if (existing) {
+        const storedO = Number(existing.o ?? existing.o_invest_thb);
+        o = Number.isFinite(storedO) ? storedO : (prevClose != null ? prevClose : currentVal);
+        h = Math.max(Number(existing.h ?? existing.h_invest_thb) || currentVal, currentVal);
+        l = Math.min(Number(existing.l ?? existing.l_invest_thb) || currentVal, currentVal);
+    } else {
+        o = prevClose != null ? prevClose : currentVal;
+        h = Math.max(o, currentVal);
+        l = Math.min(o, currentVal);
+    }
+    h = Math.max(h, o, currentVal);
+    l = Math.min(l, o, currentVal);
+    return { o: +o.toFixed(2), h: +h.toFixed(2), l: +l.toFixed(2) };
+}
+
+function assetOhlc(existingEntry, currentVal, prevClose) {
+    if (existingEntry) {
+        return dailyOhlc(
+            { o: existingEntry.o, h: existingEntry.h, l: existingEntry.l },
+            currentVal,
+            prevClose,
+        );
+    }
+    return dailyOhlc(null, currentVal, prevClose);
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -101,8 +153,9 @@ async function main() {
         const assets = Array.isArray(row.assets) ? row.assets : [];
         for (const asset of assets) {
             if (asset.finnomenaCode?.trim()) allSymbols.add(asset.finnomenaCode.trim());
+            if (asset.yahooSymbol?.trim()) allSymbols.add(normalizeYahooSymbol(asset.yahooSymbol));
             for (const sub of asset.subAssets || []) {
-                if (sub.yahooSymbol?.trim()) allSymbols.add(sub.yahooSymbol.trim());
+                if (sub.yahooSymbol?.trim()) allSymbols.add(normalizeYahooSymbol(sub.yahooSymbol));
             }
         }
     }
@@ -118,10 +171,19 @@ async function main() {
     );
     console.log(`Loaded ${priceCache.size} prices from cache (${allCacheRows.length} total rows fetched)`);
 
-    // 4. Load existing snapshots for today (ICT) to handle OHLC updates
+    // 4. Load today's snapshots (for intraday OHLC) and most recent prior snapshot per user
     const existingDaySnapshots = await sbGet(`/portfolio_snapshots?snapshot_date=eq.${snapshotDate}`);
     const existingSnapMap = new Map(existingDaySnapshots.map(s => [s.user_id, s]));
     console.log(`Loaded ${existingDaySnapshots.length} existing snapshot(s) for today to handle OHLC updates.`);
+
+    const priorSnapshots = await sbGet(
+        `/portfolio_snapshots?snapshot_date=lt.${snapshotDate}&select=user_id,snapshot_date,total_invest_thb,asset_breakdown&order=snapshot_date.desc`,
+    );
+    const prevSnapMap = new Map();
+    for (const s of priorSnapshots) {
+        if (!prevSnapMap.has(s.user_id)) prevSnapMap.set(s.user_id, s);
+    }
+    console.log(`Loaded prior snapshot for ${prevSnapMap.size} user(s) (for chained daily open).`);
 
     // 5. Compute snapshots per user
     const snapshotRows = [];
@@ -133,17 +195,48 @@ async function main() {
         let totalSpec = 0;
         const breakdown = [];
 
+        const existing = existingSnapMap.get(row.user_id);
+        const prevSnap = prevSnapMap.get(row.user_id);
+        const prevBreakdown = prevSnap?.asset_breakdown || [];
+        const existingBreakdown = existing?.asset_breakdown || [];
+        const usdThb = priceCache.get('USDTHB=X') ?? 35;
+
         for (const asset of assets) {
             const currentValue = computeAssetValue(asset, priceCache);
             const invested = Number(asset.invested) || 0;
-            const entry = {
+            const existingEntry = existingBreakdown.find(e => e.id === asset.id);
+            const prevEntry = prevBreakdown.find(e => e.id === asset.id);
+            const prevAssetClose = prevEntry != null ? Number(prevEntry.currentValue) : null;
+            const { o, h, l } = assetOhlc(existingEntry, currentValue, prevAssetClose);
+
+            breakdown.push({
                 id: asset.id,
                 name: asset.name,
                 type: asset.type,
                 currentValue: +currentValue.toFixed(2),
                 invested: +invested.toFixed(2),
-            };
-            breakdown.push(entry);
+                o, h, l,
+            });
+
+            if (STOCK_GROUP_TYPES.has(asset.type) && Array.isArray(asset.subAssets)) {
+                for (const sub of asset.subAssets) {
+                    const subVal = computeSubAssetValue(sub, priceCache, usdThb);
+                    const subInvested = Number(sub.invested) || 0;
+                    const existingSub = existingBreakdown.find(e => e.id === sub.id);
+                    const prevSub = prevBreakdown.find(e => e.id === sub.id);
+                    const prevSubClose = prevSub != null ? Number(prevSub.currentValue) : null;
+                    const subOhlc = assetOhlc(existingSub, subVal, prevSubClose);
+                    breakdown.push({
+                        id: sub.id,
+                        parentId: asset.id,
+                        name: sub.name,
+                        type: asset.type,
+                        currentValue: +subVal.toFixed(2),
+                        invested: +subInvested.toFixed(2),
+                        ...subOhlc,
+                    });
+                }
+            }
 
             if (asset.isSpeculative) {
                 totalSpec += currentValue;
@@ -153,15 +246,8 @@ async function main() {
         }
 
         const currentVal = +totalInvest.toFixed(2);
-        const existing = existingSnapMap.get(row.user_id);
-
-        let o = currentVal, h = currentVal, l = currentVal;
-        if (existing) {
-            // Keep original Open, update High/Low
-            o = Number(existing.o_invest_thb) || currentVal;
-            h = Math.max(Number(existing.h_invest_thb) || currentVal, currentVal);
-            l = Math.min(Number(existing.l_invest_thb) || currentVal, currentVal);
-        }
+        const prevPortfolioClose = prevSnap != null ? Number(prevSnap.total_invest_thb) : null;
+        const { o, h, l } = dailyOhlc(existing, currentVal, prevPortfolioClose);
 
         snapshotRows.push({
             user_id: row.user_id,
