@@ -64,6 +64,7 @@ describe("buildAssetSnapshotRows", () => {
     const rows = buildAssetSnapshotRows(snapshots, "a1");
     expect(rows).toHaveLength(2);
     expect(rows[0].total_invest_thb).toBe(1100);
+    expect(rows[0].invested).toBe(1000);
     expect(rows[1].o_invest_thb).toBe(1100);
   });
 

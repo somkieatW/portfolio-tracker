@@ -4,13 +4,13 @@ import { T } from "../../theme/tokens.js";
 
 const fmt = (n) => Number(n).toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-function PerfTooltip({ active, payload }) {
+function PerfTooltip({ active, payload, valueLabel = "Portfolio" }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 11 }}>
       <p style={{ margin: "0 0 6px", fontWeight: 700, color: T.muted }}>{d.date}</p>
-      <p style={{ margin: "2px 0", color: T.text }}>Portfolio: <strong>฿{fmt(d.value)}</strong></p>
+      <p style={{ margin: "2px 0", color: T.text }}>{valueLabel}: <strong>฿{fmt(d.value)}</strong></p>
       <p style={{ margin: "2px 0", color: T.muted }}>Contributed: ฿{fmt(d.contributed)}</p>
       <p style={{ margin: "2px 0", color: d.marketGain >= 0 ? T.green : "#ef4444" }}>
         Market gain: {d.marketGain >= 0 ? "+" : ""}฿{fmt(d.marketGain)}
@@ -22,7 +22,7 @@ function PerfTooltip({ active, payload }) {
   );
 }
 
-export default function PerformanceChart({ series }) {
+export default function PerformanceChart({ series, valueLabel = "Portfolio", valueSeriesName = "Portfolio value" }) {
   if (!series?.length) return null;
   const summary = performanceSummary(series);
   const gainColor = (summary?.marketGain ?? 0) >= 0 ? T.green : "#ef4444";
@@ -49,10 +49,10 @@ export default function PerformanceChart({ series }) {
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
           <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
           <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
-          <Tooltip content={<PerfTooltip />} />
+          <Tooltip content={<PerfTooltip valueLabel={valueLabel} />} />
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
           <Area type="monotone" dataKey="contributed" name="Net contributed" stroke={T.muted} fill="transparent" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-          <Area type="monotone" dataKey="value" name="Portfolio value" stroke={T.accent} fill="url(#valGrad)" strokeWidth={2} dot={false} />
+          <Area type="monotone" dataKey="value" name={valueSeriesName} stroke={T.accent} fill="url(#valGrad)" strokeWidth={2} dot={false} />
           <Area type="monotone" dataKey="benchmark" name="SET index (scaled)" stroke={T.cyan} fill="transparent" strokeWidth={1.5} strokeDasharray="3 3" dot={false} connectNulls />
         </AreaChart>
       </ResponsiveContainer>

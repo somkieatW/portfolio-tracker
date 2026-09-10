@@ -5,27 +5,46 @@ import { SNAPSHOT_RANGES } from "../../../domain/portfolio/snapshotSeries.js";
 import Candle from "./Candle.jsx";
 import { PnLTooltip, OhlcTooltip } from "./ChartTooltips.jsx";
 
-export default function SnapshotChartPanel({ pnlData, lastVal, snapshotRange, candleTitle = "Value History (1D)" }) {
+export default function SnapshotChartPanel({
+  pnlData,
+  lastVal,
+  snapshotRange,
+  candleTitle = "Value History (1D)",
+  perfSummary,
+  hideSummary = false,
+}) {
   const firstVal = pnlData[0]?.close ?? 0;
   const change = lastVal - firstVal;
   const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
   const pnlColor = change >= 0 ? T.green : T.red;
   const rangeLabel = SNAPSHOT_RANGES.find(r => r.days === snapshotRange)?.label ?? "All";
 
+  const marketGain = perfSummary?.marketGain ?? 0;
+  const marketColor = marketGain >= 0 ? T.green : T.red;
+  const summaryCards = perfSummary
+    ? [
+        { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+        { label: "Contributed", value: `฿${fmt(perfSummary.contributed ?? 0)}`, color: T.muted },
+        { label: `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
+      ]
+    : [
+        { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+        { label: "Change", value: `${change >= 0 ? "+" : "-"}฿${fmt(Math.abs(change))}`, color: pnlColor },
+        { label: `Return (${rangeLabel})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
+      ];
+
   return (
     <>
+      {!hideSummary && (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-        {[
-          { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
-          { label: "Change", value: `${change >= 0 ? "+" : "-"}฿${fmt(Math.abs(change))}`, color: pnlColor },
-          { label: `Return (${rangeLabel})`, value: `${change >= 0 ? "+" : ""}${changePct}%`, color: pnlColor },
-        ].map(s => (
+        {summaryCards.map(s => (
           <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
             <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
             <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
           </div>
         ))}
       </div>
+      )}
 
       <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
         <p style={{ margin: "0 0 12px 8px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{candleTitle}</p>

@@ -1,19 +1,26 @@
 import { T } from "../../theme/tokens.js";
 import { fmt } from "../../utils/format.js";
-import { buildAssetSnapshotRows, buildPnlData } from "../../../domain/portfolio/snapshotSeries.js";
+import { buildAssetSnapshotRows, buildPnlData, SNAPSHOT_RANGES } from "../../../domain/portfolio/snapshotSeries.js";
+import { buildAssetPerformanceSeries, performanceSummary } from "../../../domain/portfolio/performance.js";
 import Modal from "../common/Modal.jsx";
 import SnapshotRangeSelector from "../charts/SnapshotRangeSelector.jsx";
 import SnapshotChartPanel from "../charts/SnapshotChartPanel.jsx";
+import PerformanceChart from "../charts/PerformanceChart.jsx";
 
 export default function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots, liveValue, snapshotRange, setSnapshotRange, snapshotLoading }) {
   const name = subAsset ? subAsset.name : asset.name;
   const targetId = subAsset ? subAsset.id : asset.id;
   const assetRows = buildAssetSnapshotRows(snapshots, targetId);
+  const perfSeries = buildAssetPerformanceSeries(assetRows, transactions, liveValue);
+  const perfSummary = performanceSummary(perfSeries);
   // Chart uses snapshot history only — live portfolio value can disagree when
   // stored snapshot units lag transaction-derived holdings.
   const pnlData = buildPnlData(assetRows);
   const snapshotLast = pnlData[pnlData.length - 1]?.close ?? 0;
   const lastVal = liveValue ?? snapshotLast;
+  const rangeLabel = SNAPSHOT_RANGES.find(r => r.days === snapshotRange)?.label ?? "All";
+  const marketGain = perfSummary?.marketGain ?? 0;
+  const marketColor = marketGain >= 0 ? T.green : T.red;
 
   return (
     <Modal title={`History — ${name}`} onClose={onClose}>
@@ -26,12 +33,36 @@ export default function TransactionHistory({ asset, subAsset, transactions, onDe
           No snapshot history available for this asset yet.
         </div>
       ) : (
-        <SnapshotChartPanel
-          pnlData={pnlData}
-          lastVal={lastVal}
-          snapshotRange={snapshotRange}
-          candleTitle="Asset Value History (1D)"
-        />
+        <>
+          {perfSummary && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+                { label: "Contributed", value: `฿${fmt(perfSummary.contributed ?? 0)}`, color: T.muted },
+                { label: `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
+              ].map(s => (
+                <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {perfSeries.length > 0 && (
+            <PerformanceChart
+              series={perfSeries}
+              valueLabel="Asset value"
+              valueSeriesName="Asset value"
+            />
+          )}
+          <SnapshotChartPanel
+            pnlData={pnlData}
+            lastVal={lastVal}
+            snapshotRange={snapshotRange}
+            candleTitle="Asset Value History (1D)"
+            hideSummary
+          />
+        </>
       )}
 
       {!transactions?.length ? (

@@ -14,6 +14,7 @@ export function buildAssetSnapshotRows(snapshots, targetId) {
       return {
         snapshot_date: snap.snapshot_date,
         total_invest_thb: entry.currentValue,
+        invested: Number(entry.invested) || 0,
         o_invest_thb: entry.o ?? entry.currentValue,
         h_invest_thb: entry.h ?? entry.currentValue,
         l_invest_thb: entry.l ?? entry.currentValue,
