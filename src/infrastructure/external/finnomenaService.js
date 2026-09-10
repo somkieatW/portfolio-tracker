@@ -9,19 +9,19 @@
 // In development: Vite proxies /finnomena-api → https://www.finnomena.com (vite.config.js)
 // In production:  Uses allorigins.win as a CORS proxy
 
+import { fetchWithTimeout } from "./fetchWithTimeout.js";
+
 const IS_DEV = import.meta.env.DEV;
 
 // Fetch a Finnomena URL, routing through the appropriate CORS solution
 async function finnoFetch(path) {
     if (IS_DEV) {
-        // Vite dev proxy: /finnomena-api/fn3/api/... → https://www.finnomena.com/fn3/api/...
-        const res = await fetch(`/finnomena-api${path}`);
+        const res = await fetchWithTimeout(`/finnomena-api${path}`);
         if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
         return res.json();
     } else {
-        // Production: use allorigins.win (free CORS proxy) to forward the request
         const target = encodeURIComponent(`https://www.finnomena.com${path}`);
-        const res = await fetch(`https://api.allorigins.win/get?url=${target}`);
+        const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${target}`);
         if (!res.ok) throw new Error(`Proxy HTTP ${res.status} for ${path}`);
         const wrapper = await res.json();
         return JSON.parse(wrapper.contents);

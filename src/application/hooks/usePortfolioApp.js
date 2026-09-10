@@ -170,16 +170,29 @@ export function usePortfolioApp() {
   } = computePortfolioMetrics(investments, speculative, settings, totalInvest);
 
   const handleRefreshPrices = async () => {
+    if (priceRefreshing) return;
     setPriceRefreshing(true);
+    const REFRESH_TIMEOUT_MS = 90_000;
     try {
-      const { cache, errors, fx } = await refreshPortfolioPrices(assets);
+      const result = await Promise.race([
+        refreshPortfolioPrices(assets),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Refresh timed out after 90 seconds")), REFRESH_TIMEOUT_MS);
+        }),
+      ]);
+      const { cache, errors, fx, updated } = result;
       if (fx) setUsdThbRate(fx);
       setCacheInfo(summarizeCacheInfo(cache));
       setAssets(prev => applyPriceCacheToAssets(prev, cache));
-      if (errors.length) console.warn("[Price refresh]", errors);
+      if (errors.length) {
+        console.warn("[Price refresh]", errors);
+        if (updated === 0) {
+          alert(`Price refresh failed:\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? `\n…and ${errors.length - 5} more` : ""}`);
+        }
+      }
     } catch (e) {
       console.error(e);
-      alert("Price refresh failed. Try again in a moment.");
+      alert(e.message || "Price refresh failed. Try again in a moment.");
     } finally {
       setPriceRefreshing(false);
     }
