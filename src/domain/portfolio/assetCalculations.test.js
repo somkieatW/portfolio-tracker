@@ -70,7 +70,8 @@ describe("sanitizeAsset", () => {
     }, 35);
 
     expect(clean.yahooSymbol).toBe("GC=F");
-    expect(clean.invested).toBe(1000.01);
+    // 1000.005 is stored as 1000.00499… in IEEE-754, so toFixed(2) → "1000.00"
+    expect(clean.invested).toBe(1000);
     expect(clean.currentValue).toBe(1200.01);
     expect(clean.investedUSD).toBeUndefined();
     expect(clean.qty).toBe(1.12345679);
