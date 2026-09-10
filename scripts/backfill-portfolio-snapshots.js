@@ -41,7 +41,7 @@ function parseArgs() {
   };
   for (const arg of args) {
     if (arg === "--dry-run") opts.dryRun = true;
-    else if (arg.startsWith("--from=")) opts.from = arg.slice(6);
+    else if (arg.startsWith("--from=")) opts.from = arg.slice(7);
     else if (arg.startsWith("--to=")) opts.to = arg.slice(5);
     else if (arg.startsWith("--user=")) opts.userId = arg.slice(7);
   }
@@ -178,11 +178,14 @@ async function main() {
 
   console.log(`\n${opts.dryRun ? "Would upsert" : "Upserting"} ${rowsToUpsert.length} snapshot(s)…`);
   if (!opts.dryRun) {
-    const BATCH = 50;
+    const BATCH = 25;
     for (let i = 0; i < rowsToUpsert.length; i += BATCH) {
-      await sbUpsert("portfolio_snapshots", rowsToUpsert.slice(i, i + BATCH), "user_id,snapshot_date");
+      const chunk = rowsToUpsert.slice(i, i + BATCH);
+      const dates = `${chunk[0].snapshot_date}…${chunk[chunk.length - 1].snapshot_date}`;
+      console.log(`  Upserting batch ${Math.floor(i / BATCH) + 1} (${chunk.length} rows, ${dates})…`);
+      await sbUpsert("portfolio_snapshots", chunk, "user_id,snapshot_date");
     }
-    console.log("✓ Done.");
+    console.log(`✓ Done. Upserted ${rowsToUpsert.length} snapshot(s).`);
   }
 }
 

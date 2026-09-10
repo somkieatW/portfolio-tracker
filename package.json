@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "backfill:snapshots": "node scripts/backfill-portfolio-snapshots.js",
-    "sanitize:symbols": "node scripts/sanitize-portfolio-symbols.js"
+    "sanitize:symbols": "node scripts/sanitize-portfolio-symbols.js",
+    "verify:snapshots": "node scripts/verify-snapshots.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
