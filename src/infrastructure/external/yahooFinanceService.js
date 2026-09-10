@@ -1,4 +1,4 @@
-import { normalizeYahooSymbol } from "./yahooSymbol.js";
+import { normalizeYahooSymbol } from "../../domain/pricing/yahooSymbol.js";
 
 // ─── Yahoo Finance Stock Price Service ────────────────────────────────────────
 // Fetches real-time stock prices via Yahoo Finance's public JSON API.
@@ -91,7 +91,7 @@ export async function fetchSubAssetPrices(subAssets) {
                 if (!data) return;
                 const isUSD = data.currency === "USD" || sub.currency === "USD";
                 const rate = isUSD ? (usdThbRate ?? 33) : 1;
-                const newValue = +(sub.qty * data.price * rate).toFixed(2);
+                const newVal = +(sub.qty * data.price * rate).toFixed(2);
                 results.set(sub.id, { newValue, price: data.price, currency: data.currency, date: data.date, rate });
             } catch (err) {
                 console.warn(`[Yahoo] Failed for ${sub.yahooSymbol}:`, err);

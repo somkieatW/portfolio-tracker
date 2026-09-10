@@ -12,7 +12,7 @@
  *   SUPABASE_SERVICE_KEY  — service role key (bypasses RLS)
  */
 
-import { normalizeYahooSymbol } from '../src/yahooSymbol.js';
+import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
