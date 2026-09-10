@@ -2,8 +2,12 @@ import { supabase, getPriceCache } from "../../infrastructure/persistence/supaba
 import { fetchStockPrice, fetchUSDTHBRate } from "../../infrastructure/external/yahooFinanceService.js";
 import { fetchCurrentNAV } from "../../infrastructure/external/finnomenaService.js";
 import { normalizeYahooSymbol, getCacheEntry } from "../../domain/pricing/yahooSymbol.js";
+import { createPool } from "../../infrastructure/external/concurrencyPool.js";
 
 const UPSERT_TIMEOUT_MS = 10_000;
+const FETCH_POOL = createPool(3);
+/** Fund NAV list fetch is heavy — sync job updates cache; skip live Finnomena in prod browser. */
+const LIVE_FINNO_ENABLED = import.meta.env.DEV;
 
 /** Apply price_cache rows to assets (mirrors App load logic). */
 export function applyPriceCacheToAssets(assets, cache) {
@@ -74,7 +78,7 @@ export async function refreshPortfolioPrices(assets) {
   let fx = null;
   const jobs = [];
 
-  jobs.push(async () => {
+  jobs.push(() => FETCH_POOL(async () => {
     try {
       fx = await fetchUSDTHBRate();
       await upsertPrice({
@@ -85,12 +89,12 @@ export async function refreshPortfolioPrices(assets) {
     } catch (e) {
       errors.push(`USDTHB=X: ${e.message}`);
     }
-  });
+  }));
 
   for (const asset of assets) {
-    if (asset.finnomenaCode?.trim() && asset.units > 0) {
+    if (LIVE_FINNO_ENABLED && asset.finnomenaCode?.trim() && asset.units > 0) {
       const code = asset.finnomenaCode.trim();
-      jobs.push(async () => {
+      jobs.push(() => FETCH_POOL(async () => {
         try {
           const navData = await fetchCurrentNAV(code);
           if (navData?.nav) {
@@ -103,12 +107,12 @@ export async function refreshPortfolioPrices(assets) {
         } catch (e) {
           errors.push(`${code}: ${e.message}`);
         }
-      });
+      }));
     }
 
     if (asset.yahooSymbol?.trim() && asset.qty > 0) {
       const sym = normalizeYahooSymbol(asset.yahooSymbol);
-      jobs.push(async () => {
+      jobs.push(() => FETCH_POOL(async () => {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
@@ -127,13 +131,13 @@ export async function refreshPortfolioPrices(assets) {
         } catch (e) {
           errors.push(`${sym}: ${e.message}`);
         }
-      });
+      }));
     }
 
     for (const sub of asset.subAssets || []) {
       if (!sub.yahooSymbol?.trim() || !(sub.qty > 0)) continue;
       const sym = normalizeYahooSymbol(sub.yahooSymbol);
-      jobs.push(async () => {
+      jobs.push(() => FETCH_POOL(async () => {
         try {
           const priceData = await fetchStockPrice(sym);
           if (priceData) {
@@ -152,7 +156,7 @@ export async function refreshPortfolioPrices(assets) {
         } catch (e) {
           errors.push(`${sym}: ${e.message}`);
         }
-      });
+      }));
     }
   }
 

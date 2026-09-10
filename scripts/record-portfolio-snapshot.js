@@ -13,6 +13,7 @@
  */
 
 import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
+import { holdingsAsOf, subHoldingsAsOf } from '../src/domain/portfolio/historicalHoldings.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -50,32 +51,23 @@ async function sbUpsert(table, rows, onConflict = null) {
 const STOCK_GROUP_TYPES = new Set(['us_stocks', 'thai_stocks']);
 
 // ─── Compute current value for a single asset using cached prices ─────────────
-function computeAssetValue(asset, priceCache) {
+function computeAssetValue(asset, priceCache, transactions, asOfDate) {
     const usdThb = priceCache.get('USDTHB=X') ?? 35;
 
     // Stock group — compute from sub-assets using live cached prices
     if (STOCK_GROUP_TYPES.has(asset.type) && Array.isArray(asset.subAssets)) {
         let total = 0;
         for (const sub of asset.subAssets) {
-            const sym = normalizeYahooSymbol(sub.yahooSymbol);
-            const price = sym ? priceCache.get(sym) : null;
-            const qty = Number(sub.qty) || 0;
-            if (price && qty > 0) {
-                const isUSD = sub.currency === 'USD';
-                total += isUSD ? qty * price * usdThb : qty * price;
-            } else {
-                // Fallback: use stored currentValue for this sub-asset
-                total += Number(sub.currentValue) || 0;
-            }
+            total += computeSubAssetValue(asset.id, sub, priceCache, usdThb, transactions, asOfDate);
         }
         return total;
     }
 
-    // Fund with finnomenaCode — apply cached NAV × units
+    // Fund with finnomenaCode — apply cached NAV × transaction-derived units
     if (asset.finnomenaCode?.trim()) {
         const code = asset.finnomenaCode.trim();
         const nav = priceCache.get(code);
-        const units = Number(asset.units) || 0;
+        const { units } = holdingsAsOf(asset, transactions, asOfDate);
         if (nav && units > 0) return units * nav;
     }
 
@@ -83,7 +75,7 @@ function computeAssetValue(asset, priceCache) {
     if (asset.yahooSymbol?.trim()) {
         const sym = normalizeYahooSymbol(asset.yahooSymbol);
         const price = sym ? priceCache.get(sym) : null;
-        const qty = Number(asset.qty) || 0;
+        const { qty } = holdingsAsOf(asset, transactions, asOfDate);
         if (price && qty > 0) {
             const isUSD = asset.currency === 'USD';
             return isUSD ? qty * price * usdThb : qty * price;
@@ -94,10 +86,10 @@ function computeAssetValue(asset, priceCache) {
     return Number(asset.currentValue) || 0;
 }
 
-function computeSubAssetValue(sub, priceCache, usdThb) {
+function computeSubAssetValue(parentId, sub, priceCache, usdThb, transactions, asOfDate) {
     const sym = normalizeYahooSymbol(sub.yahooSymbol);
     const price = sym ? priceCache.get(sym) : null;
-    const qty = Number(sub.qty) || 0;
+    const { qty } = subHoldingsAsOf(parentId, sub, transactions, asOfDate);
     if (price && qty > 0) {
         const isUSD = sub.currency === 'USD';
         return isUSD ? qty * price * usdThb : qty * price;
@@ -143,8 +135,14 @@ async function main() {
 
     console.log(`[${now.toISOString()}] Recording portfolio snapshot for ${snapshotDate}…`);
 
-    // 1. Load all portfolios
+    // 1. Load all portfolios and transactions (for holdings-as-of date)
     const portfolios = await sbGet('/portfolio?select=user_id,assets');
+    const allTx = await sbGet('/transactions?select=*');
+    const txByUser = new Map();
+    for (const tx of allTx) {
+        if (!txByUser.has(tx.user_id)) txByUser.set(tx.user_id, []);
+        txByUser.get(tx.user_id).push(tx);
+    }
     console.log(`Found ${portfolios.length} portfolio(s)`);
 
     // 2. Collect all symbols we'll need prices for
@@ -200,9 +198,10 @@ async function main() {
         const prevBreakdown = prevSnap?.asset_breakdown || [];
         const existingBreakdown = existing?.asset_breakdown || [];
         const usdThb = priceCache.get('USDTHB=X') ?? 35;
+        const transactions = txByUser.get(row.user_id) || [];
 
         for (const asset of assets) {
-            const currentValue = computeAssetValue(asset, priceCache);
+            const currentValue = computeAssetValue(asset, priceCache, transactions, snapshotDate);
             const invested = Number(asset.invested) || 0;
             const existingEntry = existingBreakdown.find(e => e.id === asset.id);
             const prevEntry = prevBreakdown.find(e => e.id === asset.id);
@@ -220,7 +219,7 @@ async function main() {
 
             if (STOCK_GROUP_TYPES.has(asset.type) && Array.isArray(asset.subAssets)) {
                 for (const sub of asset.subAssets) {
-                    const subVal = computeSubAssetValue(sub, priceCache, usdThb);
+                    const subVal = computeSubAssetValue(asset.id, sub, priceCache, usdThb, transactions, snapshotDate);
                     const subInvested = Number(sub.invested) || 0;
                     const existingSub = existingBreakdown.find(e => e.id === sub.id);
                     const prevSub = prevBreakdown.find(e => e.id === sub.id);

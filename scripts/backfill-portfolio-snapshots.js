@@ -11,6 +11,7 @@
  *   node scripts/backfill-portfolio-snapshots.js
  *   node scripts/backfill-portfolio-snapshots.js --from=2026-07-01 --to=2026-09-09
  *   node scripts/backfill-portfolio-snapshots.js --dry-run
+ *   node scripts/backfill-portfolio-snapshots.js --force   # overwrite existing dates in range
  *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
@@ -21,6 +22,7 @@ import { requireSupabaseEnv, sbGet, sbUpsert } from "./lib/supabaseAdmin.js";
 
 dotenv.config();
 import { fetchDailyCloses } from "./lib/yahooHistorical.js";
+import { fetchFundNavSeries } from "./lib/finnomenaHistorical.js";
 import { buildManualFallback, buildSnapshotForDate } from "./lib/snapshotCompute.js";
 
 requireSupabaseEnv();
@@ -37,10 +39,12 @@ function parseArgs() {
     from: "2026-07-01",
     to: ictYesterday(),
     dryRun: false,
+    force: false,
     userId: null,
   };
   for (const arg of args) {
     if (arg === "--dry-run") opts.dryRun = true;
+    else if (arg === "--force") opts.force = true;
     else if (arg.startsWith("--from=")) opts.from = arg.slice(7);
     else if (arg.startsWith("--to=")) opts.to = arg.slice(5);
     else if (arg.startsWith("--user=")) opts.userId = arg.slice(7);
@@ -60,19 +64,21 @@ function dateRange(from, to) {
 }
 
 function collectSymbols(assets) {
-  const symbols = new Set(["USDTHB=X"]);
+  const yahoo = new Set(["USDTHB=X"]);
+  const funds = new Set();
   for (const a of assets) {
-    if (a.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(a.yahooSymbol));
+    if (a.finnomenaCode?.trim()) funds.add(a.finnomenaCode.trim());
+    if (a.yahooSymbol?.trim()) yahoo.add(normalizeYahooSymbol(a.yahooSymbol));
     for (const sub of a.subAssets || []) {
-      if (sub.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(sub.yahooSymbol));
+      if (sub.yahooSymbol?.trim()) yahoo.add(normalizeYahooSymbol(sub.yahooSymbol));
     }
   }
-  return symbols;
+  return { yahoo, funds };
 }
 
-async function loadHistoricalPrices(symbols, from, to) {
+async function loadHistoricalPrices(yahooSymbols, fundCodes, from, to) {
   const priceMaps = new Map();
-  for (const sym of symbols) {
+  for (const sym of yahooSymbols) {
     try {
       console.log(`  Fetching ${sym}…`);
       const map = await fetchDailyCloses(sym, from, to);
@@ -83,12 +89,23 @@ async function loadHistoricalPrices(symbols, from, to) {
       console.warn(`    ⚠ ${sym}: ${e.message}`);
     }
   }
+  for (const code of fundCodes) {
+    try {
+      console.log(`  Fetching NAV ${code}…`);
+      const map = await fetchFundNavSeries(code, from, to);
+      priceMaps.set(code, map);
+      console.log(`    → ${map.size} daily NAVs`);
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e) {
+      console.warn(`    ⚠ ${code}: ${e.message}`);
+    }
+  }
   return priceMaps;
 }
 
 async function main() {
   const opts = parseArgs();
-  console.log(`Backfill snapshots ${opts.from} → ${opts.to}${opts.dryRun ? " (dry run)" : ""}`);
+  console.log(`Backfill snapshots ${opts.from} → ${opts.to}${opts.dryRun ? " (dry run)" : ""}${opts.force ? " (force overwrite)" : ""}`);
 
   const portfolios = await sbGet("/portfolio?select=user_id,assets");
   const allTx = await sbGet("/transactions?select=*&order=date.asc");
@@ -116,22 +133,24 @@ async function main() {
       `/portfolio_snapshots?user_id=eq.${userId}&snapshot_date=gte.${opts.from}&snapshot_date=lte.${opts.to}&select=snapshot_date,total_invest_thb,asset_breakdown&order=snapshot_date.asc`,
     );
     const existingDates = new Set(existing.map(s => s.snapshot_date));
-    const missingDates = allDates.filter(d => !existingDates.has(d));
+    const missingDates = opts.force
+      ? allDates
+      : allDates.filter(d => !existingDates.has(d));
 
     if (missingDates.length === 0) {
       console.log(`User ${userId.slice(0, 8)}… — no gaps in range`);
       continue;
     }
 
-    console.log(`User ${userId.slice(0, 8)}… — ${missingDates.length} missing day(s)`);
+    console.log(`User ${userId.slice(0, 8)}… — ${missingDates.length} day(s) to ${opts.force ? "rebuild" : "fill"}`);
 
     const allSnaps = await sbGet(
       `/portfolio_snapshots?user_id=eq.${userId}&select=snapshot_date,total_invest_thb,asset_breakdown&order=snapshot_date.asc`,
     );
     const { known: manualKnown } = buildManualFallback(allSnaps);
 
-    const symbols = collectSymbols(assets);
-    const priceMaps = await loadHistoricalPrices(symbols, opts.from, opts.to);
+    const { yahoo, funds } = collectSymbols(assets);
+    const priceMaps = await loadHistoricalPrices(yahoo, funds, opts.from, opts.to);
     const usdThbByDate = priceMaps.get("USDTHB=X") ?? new Map();
 
     const snapByDate = new Map(allSnaps.map(s => [s.snapshot_date, s]));

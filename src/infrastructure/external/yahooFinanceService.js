@@ -1,5 +1,6 @@
 import { normalizeYahooSymbol } from "../../domain/pricing/yahooSymbol.js";
 import { fetchWithTimeout } from "./fetchWithTimeout.js";
+import { fetchViaCorsProxies } from "./corsProxies.js";
 
 // ─── Yahoo Finance Stock Price Service ────────────────────────────────────────
 // Fetches real-time stock prices via Yahoo Finance's public JSON API.
@@ -23,11 +24,9 @@ async function yahooFetch(path) {
         if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
         return res.json();
     } else {
-        const target = encodeURIComponent(`${YAHOO_BASE}${path}`);
-        const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${target}`);
-        if (!res.ok) throw new Error(`Proxy HTTP ${res.status}`);
-        const wrapper = await res.json();
-        return JSON.parse(wrapper.contents);
+        const target = `${YAHOO_BASE}${path}`;
+        const res = await fetchViaCorsProxies(target);
+        return res.json();
     }
 }
 

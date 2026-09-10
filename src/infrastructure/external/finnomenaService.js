@@ -10,26 +10,48 @@
 // In production:  Uses allorigins.win as a CORS proxy
 
 import { fetchWithTimeout } from "./fetchWithTimeout.js";
+import { fetchViaCorsProxies } from "./corsProxies.js";
 
 const IS_DEV = import.meta.env.DEV;
+const FUND_MAP_KEY = "finnomena_fund_map_v1";
+const FUND_MAP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Fetch a Finnomena URL, routing through the appropriate CORS solution
 async function finnoFetch(path) {
     if (IS_DEV) {
         const res = await fetchWithTimeout(`/finnomena-api${path}`);
         if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
         return res.json();
     } else {
-        const target = encodeURIComponent(`https://www.finnomena.com${path}`);
-        const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${target}`);
-        if (!res.ok) throw new Error(`Proxy HTTP ${res.status} for ${path}`);
-        const wrapper = await res.json();
-        return JSON.parse(wrapper.contents);
+        const target = `https://www.finnomena.com${path}`;
+        const res = await fetchViaCorsProxies(target);
+        return res.json();
     }
 }
 
-// In-memory cache of the fund list (short_code → id map)
 let fundMapCache = null;
+
+function loadFundMapFromSession() {
+    try {
+        const raw = sessionStorage.getItem(FUND_MAP_KEY);
+        if (!raw) return null;
+        const { ts, entries } = JSON.parse(raw);
+        if (Date.now() - ts > FUND_MAP_TTL_MS) return null;
+        return new Map(entries);
+    } catch {
+        return null;
+    }
+}
+
+function saveFundMapToSession(map) {
+    try {
+        sessionStorage.setItem(FUND_MAP_KEY, JSON.stringify({
+            ts: Date.now(),
+            entries: [...map.entries()],
+        }));
+    } catch {
+        // sessionStorage full or unavailable
+    }
+}
 
 /**
  * Fetches the full Finnomena fund list and builds a lookup map.
@@ -38,6 +60,12 @@ let fundMapCache = null;
  */
 async function getFundMap() {
     if (fundMapCache) return fundMapCache;
+
+    const cached = loadFundMapFromSession();
+    if (cached?.size) {
+        fundMapCache = cached;
+        return fundMapCache;
+    }
 
     const list = await finnoFetch(`/fn3/api/fund/public/list`);
 
@@ -56,6 +84,7 @@ async function getFundMap() {
         }
     }
 
+    saveFundMapToSession(fundMapCache);
     return fundMapCache;
 }
 

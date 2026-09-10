@@ -172,12 +172,12 @@ export function usePortfolioApp() {
   const handleRefreshPrices = async () => {
     if (priceRefreshing) return;
     setPriceRefreshing(true);
-    const REFRESH_TIMEOUT_MS = 90_000;
+    const REFRESH_TIMEOUT_MS = 120_000;
     try {
       const result = await Promise.race([
         refreshPortfolioPrices(assets),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("Refresh timed out after 90 seconds")), REFRESH_TIMEOUT_MS);
+          setTimeout(() => reject(new Error("Refresh timed out after 2 minutes")), REFRESH_TIMEOUT_MS);
         }),
       ]);
       const { cache, errors, fx, updated } = result;
@@ -186,12 +186,36 @@ export function usePortfolioApp() {
       setAssets(prev => applyPriceCacheToAssets(prev, cache));
       if (errors.length) {
         console.warn("[Price refresh]", errors);
-        if (updated === 0) {
-          alert(`Price refresh failed:\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? `\n…and ${errors.length - 5} more` : ""}`);
-        }
+      }
+      if (updated === 0 && errors.length > 0) {
+        const fromCache = cache.size > 0;
+        alert(
+          fromCache
+            ? `Live price fetch failed (proxy timeout). Showing last cached prices.\n\n${errors.slice(0, 3).join("\n")}`
+            : `Price refresh failed:\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? `\n…and ${errors.length - 5} more` : ""}`,
+        );
+      } else if (errors.length > 0) {
+        console.info(`[Price refresh] Updated ${updated} symbol(s); ${errors.length} failed`);
       }
     } catch (e) {
       console.error(e);
+      try {
+        const symbols = new Set(["USDTHB=X"]);
+        for (const a of assets) {
+          if (a.finnomenaCode?.trim()) symbols.add(a.finnomenaCode.trim());
+          if (a.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(a.yahooSymbol));
+          for (const sub of a.subAssets || []) {
+            if (sub.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(sub.yahooSymbol));
+          }
+        }
+        const cache = await getPriceCache([...symbols]);
+        if (cache.size > 0) {
+          setCacheInfo(summarizeCacheInfo(cache));
+          setAssets(prev => applyPriceCacheToAssets(prev, cache));
+          alert(`Refresh timed out, but cached prices were applied (${cache.size} symbols).`);
+          return;
+        }
+      } catch { /* ignore cache fallback errors */ }
       alert(e.message || "Price refresh failed. Try again in a moment.");
     } finally {
       setPriceRefreshing(false);

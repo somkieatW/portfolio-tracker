@@ -9,8 +9,11 @@ export default function TransactionHistory({ asset, subAsset, transactions, onDe
   const name = subAsset ? subAsset.name : asset.name;
   const targetId = subAsset ? subAsset.id : asset.id;
   const assetRows = buildAssetSnapshotRows(snapshots, targetId);
-  const pnlData = buildPnlData(assetRows, liveValue);
-  const lastVal = liveValue ?? pnlData[pnlData.length - 1]?.close ?? 0;
+  // Chart uses snapshot history only — live portfolio value can disagree when
+  // stored snapshot units lag transaction-derived holdings.
+  const pnlData = buildPnlData(assetRows);
+  const snapshotLast = pnlData[pnlData.length - 1]?.close ?? 0;
+  const lastVal = liveValue ?? snapshotLast;
 
   return (
     <Modal title={`History — ${name}`} onClose={onClose}>
