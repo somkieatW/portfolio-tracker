@@ -2,6 +2,13 @@ import { ResponsiveContainer, ComposedChart, Line, Bar, BarChart, XAxis, YAxis, 
 import { T } from "../../theme/tokens.js";
 import { fmt } from "../../utils/format.js";
 import { SNAPSHOT_RANGES } from "../../../domain/portfolio/snapshotSeries.js";
+import {
+  extentFromRows,
+  paddedYDomain,
+  paddedSignedYDomain,
+  formatAxisMoney,
+  formatAxisSignedMoney,
+} from "../../utils/chartAxis.js";
 import Candle from "./Candle.jsx";
 import { PnLTooltip, OhlcTooltip } from "./ChartTooltips.jsx";
 
@@ -18,6 +25,12 @@ export default function SnapshotChartPanel({
   const changePct = firstVal > 0 ? ((change / firstVal) * 100).toFixed(2) : "0.00";
   const pnlColor = change >= 0 ? T.green : T.red;
   const rangeLabel = SNAPSHOT_RANGES.find(r => r.days === snapshotRange)?.label ?? "All";
+
+  const ohlcExtent = extentFromRows(pnlData, ["low", "high", "open", "close"]);
+  const ohlcDomain = paddedYDomain(ohlcExtent.min, ohlcExtent.max);
+
+  const pnlExtent = extentFromRows(pnlData, ["pnl"]);
+  const pnlDomain = paddedSignedYDomain(pnlExtent.min, pnlExtent.max);
 
   const marketGain = perfSummary?.marketGain ?? 0;
   const marketColor = marketGain >= 0 ? T.green : T.red;
@@ -54,10 +67,10 @@ export default function SnapshotChartPanel({
             <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
             <YAxis
               stroke={T.muted}
-              tick={{ fontSize: 9 }}
-              tickFormatter={v => `฿${(v / 1000).toFixed(1)}k`}
-              width={48}
-              domain={[(dataMin) => dataMin - 600, (dataMax) => dataMax + 600]}
+              tick={{ fontSize: 10, fill: T.text }}
+              tickFormatter={formatAxisMoney}
+              width={52}
+              domain={ohlcDomain}
               allowDataOverflow={true}
             />
             <Tooltip content={<OhlcTooltip />} />
@@ -87,7 +100,13 @@ export default function SnapshotChartPanel({
           <BarChart data={pnlData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
             <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" minTickGap={10} />
-            <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `${v > 0 ? "+" : ""}${(v / 1000).toFixed(1)}k`} width={48} />
+            <YAxis
+              stroke={T.muted}
+              tick={{ fontSize: 10, fill: T.text }}
+              tickFormatter={formatAxisSignedMoney}
+              domain={pnlDomain}
+              width={52}
+            />
             <Tooltip content={<PnLTooltip />} />
             <Bar dataKey="pnl" radius={[4, 4, 0, 0]} barSize={16}>
               {pnlData.map((entry, index) => (

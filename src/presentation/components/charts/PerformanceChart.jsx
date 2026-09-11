@@ -1,5 +1,6 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { performanceSummary } from "../../../domain/portfolio/performance.js";
+import { extentFromRows, paddedYDomain, formatAxisMoney } from "../../utils/chartAxis.js";
 import { T } from "../../theme/tokens.js";
 
 const fmt = (n) => Number(n).toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -26,6 +27,8 @@ export default function PerformanceChart({ series, valueLabel = "Portfolio", val
   if (!series?.length) return null;
   const summary = performanceSummary(series);
   const gainColor = (summary?.marketGain ?? 0) >= 0 ? T.green : "#ef4444";
+  const { min, max } = extentFromRows(series, ["contributed", "value", "benchmark"]);
+  const yDomain = paddedYDomain(min, max);
 
   return (
     <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
@@ -48,7 +51,13 @@ export default function PerformanceChart({ series, valueLabel = "Portfolio", val
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
           <XAxis dataKey="date" stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={d => d.slice(5)} interval="preserveStartEnd" />
-          <YAxis stroke={T.muted} tick={{ fontSize: 9 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} width={48} />
+          <YAxis
+            stroke={T.muted}
+            tick={{ fontSize: 10, fill: T.text }}
+            tickFormatter={formatAxisMoney}
+            domain={yDomain}
+            width={52}
+          />
           <Tooltip content={<PerfTooltip valueLabel={valueLabel} />} />
           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
           <Area type="monotone" dataKey="contributed" name="Net contributed" stroke={T.muted} fill="transparent" strokeWidth={2} strokeDasharray="5 4" dot={false} />
