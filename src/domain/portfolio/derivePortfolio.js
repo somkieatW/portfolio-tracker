@@ -1,4 +1,9 @@
-import { calcDerivedTotals, sanitizeAsset } from "./assetCalculations.js";
+import {
+  calcDerivedTotals,
+  isManualIncomeAsset,
+  sanitizeAsset,
+  sumIncomeTransactions,
+} from "./assetCalculations.js";
 
 export function derivePortfolioAssets(assets, transactions, usdThbRate) {
   return assets.map(asset => {
@@ -7,10 +12,13 @@ export function derivePortfolioAssets(assets, transactions, usdThbRate) {
 
     // Top-level asset (e.g. fund, crypto, generic stock)
     const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id && (t.type === 'buy' || t.type === 'sell'));
+    let principal = Number(asset.invested) || 0;
+
     if (assetTxs.length > 0) {
       const { invThb, invUsd, totalUnits, totalQty } = calcDerivedTotals(assetTxs, isUSD);
 
       derived.invested = invThb;
+      principal = invThb;
       if (isUSD) derived.investedUSD = invUsd;
 
       // Dynamically adjust currentValue matching the new derived unit count
@@ -24,6 +32,14 @@ export function derivePortfolioAssets(assets, transactions, usdThbRate) {
 
       if (derived.units !== undefined) derived.units = totalUnits;
       if (derived.qty !== undefined) derived.qty = totalQty;
+    }
+
+    if (isManualIncomeAsset(asset)) {
+      const income = sumIncomeTransactions(transactions, asset.id);
+      if (assetTxs.length > 0 || income > 0) {
+        derived.invested = principal;
+        derived.currentValue = +(principal + income).toFixed(2);
+      }
     }
 
     // Sub-assets (e.g. inside US Stocks / Thai Stocks groups)

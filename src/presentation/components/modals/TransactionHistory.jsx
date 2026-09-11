@@ -82,7 +82,7 @@ export default function TransactionHistory({ asset, subAsset, transactions, onDe
             {transactions.map(tx => {
               const isSell = tx.type === 'sell';
               const amt = isUSD ? tx.amount_usd : tx.amount_thb;
-              const color = isSell ? T.orange : (tx.type === 'dividend' ? T.green : T.text);
+              const color = isSell ? T.orange : (tx.type === 'dividend' || tx.type === 'interest' ? T.green : T.text);
               return (
                 <div key={tx.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1.5fr 3fr 3fr 70px", padding: "10px 12px", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}55`, alignItems: "center" }}>
                   <div style={{ color: T.dim }}>{new Date(tx.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</div>

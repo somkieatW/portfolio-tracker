@@ -2,8 +2,11 @@ import { useState, useEffect } from "react";
 import { T, inputStyle, selectStyle } from "../../theme/tokens.js";
 import { fmt } from "../../utils/format.js";
 import { STOCK_GROUP_TYPES } from "../../../domain/portfolio/constants.js";
+import { isManualIncomeAsset } from "../../../domain/portfolio/assetCalculations.js";
 import Modal from "../common/Modal.jsx";
 import Field from "../common/Field.jsx";
+
+const INCOME_TYPES = new Set(["dividend", "interest", "fee"]);
 
 export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave, onClose, usdThbRate }) {
   const target = subAsset || asset;
@@ -11,9 +14,8 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
   const rate = usdThbRate;
   const isFund = !!target.finnomenaCode?.trim();
   const isStock = !!target.yahooSymbol?.trim() || STOCK_GROUP_TYPES.has(target.type) || target.type === "stock" || target.type === "us_stocks" || target.type === "thai_stocks";
+  const isManualIncome = isManualIncomeAsset(target);
 
-  // When editing, initialTx fields might be negative (for sells).
-  // We want to work with positive values in the form UI and handle negating on submit.
   const [form, setForm] = useState({
     type: initialTx?.type || "buy",
     amount: initialTx ? Math.abs(isUSD ? initialTx.amount_usd : initialTx.amount_thb) : "",
@@ -24,9 +26,11 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
     notes: initialTx?.notes || ""
   });
 
-  // If price is missing but we have amount and units/qty, derive it for the UI
+  const isIncomeType = INCOME_TYPES.has(form.type);
+  const showPriceFields = !isIncomeType && (isFund || isStock);
+
   useEffect(() => {
-    if (initialTx && !initialTx.price_per_unit) {
+    if (initialTx && !initialTx.price_per_unit && !INCOME_TYPES.has(initialTx.type)) {
       const amt = Math.abs(isUSD ? initialTx.amount_usd : initialTx.amount_thb);
       const uCount = Math.abs(initialTx.units || initialTx.qty || 0);
       if (amt > 0 && uCount > 0) {
@@ -39,7 +43,8 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
     setForm(p => {
       const next = { ...p, [k]: v };
 
-      // Auto-calculate logic
+      if (INCOME_TYPES.has(next.type)) return next;
+
       const a = parseFloat(k === 'amount' ? v : next.amount) || 0;
       const pr = parseFloat(k === 'price' ? v : next.price) || 0;
       const u = parseFloat(k === 'units' ? v : next.units) || 0;
@@ -61,17 +66,18 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
 
   const handleSubmit = async () => {
     const amt = parseFloat(form.amount) || 0;
-    if (amt <= 0 && form.type !== 'dividend') return alert("Amount must be greater than 0");
+    if (amt <= 0 && !["dividend", "interest"].includes(form.type)) {
+      return alert("Amount must be greater than 0");
+    }
 
-    // Construct the transaction object
     const tx = {
-      ...(initialTx?.id ? { id: initialTx.id } : {}), // Keep ID if editing
+      ...(initialTx?.id ? { id: initialTx.id } : {}),
       asset_id: asset.id,
       sub_asset_id: subAsset?.id || null,
       type: form.type,
       currency: target.currency || 'THB',
       date: form.date,
-      price_per_unit: parseFloat(form.price) || null,
+      price_per_unit: isIncomeType ? null : (parseFloat(form.price) || null),
       notes: form.notes.trim() || null,
     };
 
@@ -82,12 +88,14 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
       tx.amount_thb = form.type === 'sell' ? -amt : amt;
     }
 
-    if (isFund) {
-      const u = parseFloat(form.units) || 0;
-      tx.units = form.type === 'sell' ? -u : u;
-    } else if (isStock) {
-      const q = parseFloat(form.qty) || 0;
-      tx.qty = form.type === 'sell' ? -q : q;
+    if (!isIncomeType) {
+      if (isFund) {
+        const u = parseFloat(form.units) || 0;
+        tx.units = form.type === 'sell' ? -u : u;
+      } else if (isStock) {
+        const q = parseFloat(form.qty) || 0;
+        tx.qty = form.type === 'sell' ? -q : q;
+      }
     }
 
     await onSave(tx);
@@ -100,6 +108,7 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
           <select style={selectStyle} value={form.type} onChange={e => set("type", e.target.value)}>
             <option value="buy">Buy / Top Up</option>
             <option value="sell">Sell / Withdraw</option>
+            {isManualIncome && <option value="interest">Interest</option>}
             <option value="dividend">Dividend</option>
             <option value="fee">Fee</option>
           </select>
@@ -109,24 +118,27 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
-          <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
-        </Field>
-        <Field label={isFund ? "NAV (Price)" : "Price per Share"}>
-          <input style={inputStyle} type="number" step="0.0001" value={form.price} onChange={e => set("price", e.target.value)} placeholder="0.0000" />
-        </Field>
-        {isFund && (
-          <Field label="Units">
-            <input style={inputStyle} type="number" step="0.0001" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0.0000" />
+      <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
+        <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
+      </Field>
+
+      {showPriceFields && (
+        <div style={{ display: "grid", gridTemplateColumns: isFund || isStock ? "1fr 1fr" : "1fr", gap: 10 }}>
+          <Field label={isFund ? "NAV (Price)" : "Price per Share"}>
+            <input style={inputStyle} type="number" step="0.0001" value={form.price} onChange={e => set("price", e.target.value)} placeholder="0.0000" />
           </Field>
-        )}
-        {isStock && (
-          <Field label="Shares">
-            <input style={inputStyle} type="number" step="0.0001" value={form.qty} onChange={e => set("qty", e.target.value)} placeholder="0" />
-          </Field>
-        )}
-      </div>
+          {isFund && (
+            <Field label="Units">
+              <input style={inputStyle} type="number" step="0.0001" value={form.units} onChange={e => set("units", e.target.value)} placeholder="0.0000" />
+            </Field>
+          )}
+          {isStock && (
+            <Field label="Shares">
+              <input style={inputStyle} type="number" step="0.0001" value={form.qty} onChange={e => set("qty", e.target.value)} placeholder="0" />
+            </Field>
+          )}
+        </div>
+      )}
 
       {isUSD && parseFloat(form.amount) > 0 && (
         <p style={{ margin: "-8px 0 12px", fontSize: 11, color: T.dim }}>
@@ -135,7 +147,7 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
       )}
 
       <Field label="Notes (Optional)">
-        <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="e.g. Monthly DCA" />
+        <input style={inputStyle} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder={isIncomeType ? "e.g. Q3 coupon payment" : "e.g. Monthly DCA"} />
       </Field>
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>

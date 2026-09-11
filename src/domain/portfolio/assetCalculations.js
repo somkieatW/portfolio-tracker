@@ -1,6 +1,24 @@
 import { normalizeYahooSymbol } from "../pricing/yahooSymbol.js";
 import { STOCK_GROUP_TYPES } from "./constants.js";
 
+export const INCOME_TX_TYPES = new Set(["interest", "dividend"]);
+
+/** Cash/bond-style assets without a live price feed — income txs adjust value, not cost basis. */
+export function isManualIncomeAsset(asset) {
+  if (asset.finnomenaCode?.trim() || asset.yahooSymbol?.trim()) return false;
+  return asset.type === "cash" || asset.type === "bond";
+}
+
+export function sumIncomeTransactions(transactions, assetId, subAssetId = null) {
+  return (transactions || [])
+    .filter(t =>
+      t.asset_id === assetId
+      && (subAssetId ? t.sub_asset_id === subAssetId : !t.sub_asset_id)
+      && INCOME_TX_TYPES.has(t.type),
+    )
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount_thb || 0)), 0);
+}
+
 export function calcPL(a) {
   if (a.isSpeculative || a.invested === 0) return { pl: a.currentValue - a.invested, plPct: 0 };
   const pl = a.currentValue - a.invested;

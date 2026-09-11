@@ -5,6 +5,8 @@ import {
   normalizeAssets,
   groupTotals,
   sanitizeAsset,
+  isManualIncomeAsset,
+  sumIncomeTransactions,
 } from "./assetCalculations.js";
 
 describe("calcPL", () => {
@@ -55,6 +57,26 @@ describe("groupTotals / normalizeAssets", () => {
     const [normalized] = normalizeAssets([group]);
     expect(normalized.invested).toBe(3000);
     expect(normalized.currentValue).toBe(3300);
+  });
+});
+
+describe("isManualIncomeAsset", () => {
+  it("identifies cash and bond assets without price feeds", () => {
+    expect(isManualIncomeAsset({ type: "cash" })).toBe(true);
+    expect(isManualIncomeAsset({ type: "bond" })).toBe(true);
+    expect(isManualIncomeAsset({ type: "cash", yahooSymbol: "PTT.BK" })).toBe(false);
+    expect(isManualIncomeAsset({ type: "equity", finnomenaCode: "K-SET50" })).toBe(false);
+  });
+});
+
+describe("sumIncomeTransactions", () => {
+  it("sums interest and dividend amounts for an asset", () => {
+    const txs = [
+      { asset_id: "a1", type: "interest", amount_thb: 100 },
+      { asset_id: "a1", type: "dividend", amount_thb: 50 },
+      { asset_id: "a2", type: "interest", amount_thb: 999 },
+    ];
+    expect(sumIncomeTransactions(txs, "a1")).toBe(150);
   });
 });
 
