@@ -9,6 +9,25 @@ export function isManualIncomeAsset(asset) {
   return asset.type === "cash" || asset.type === "bond";
 }
 
+/** Mutual fund — matches sanitizeAsset fund detection. */
+export function isFundAsset(asset) {
+  const hasFinno = !!asset.finnomenaCode?.trim();
+  const hasYahoo = !!asset.yahooSymbol?.trim();
+  return hasFinno || (Number(asset.units) > 0 && !hasYahoo);
+}
+
+/** Stock / gold / shares — fund classification takes precedence when both could apply. */
+export function isStockAsset(asset) {
+  if (isFundAsset(asset)) return false;
+  if (STOCK_GROUP_TYPES.has(asset.type)) return true;
+  const hasYahoo = !!asset.yahooSymbol?.trim();
+  return hasYahoo
+    || Number(asset.qty) > 0
+    || asset.type === "stock"
+    || asset.type === "us_stocks"
+    || asset.type === "thai_stocks";
+}
+
 export function sumIncomeTransactions(transactions, assetId, subAssetId = null) {
   return (transactions || [])
     .filter(t =>
@@ -106,8 +125,8 @@ export function calcDerivedTotals(txs, isUSD) {
 export function sanitizeAsset(a, rate) {
   const isUSD = a.currency === "USD";
   const isStockGroup = STOCK_GROUP_TYPES.has(a.type);
-  const isFund = !!a.finnomenaCode?.trim() || a.units > 0;
-  const isStock = !!a.yahooSymbol?.trim() || a.qty > 0;
+  const isFund = isFundAsset(a);
+  const isStock = isStockAsset(a) || isStockGroup;
 
   const clean = { ...a };
 

@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { T, inputStyle, selectStyle } from "../../theme/tokens.js";
 import { fmt } from "../../utils/format.js";
-import { STOCK_GROUP_TYPES } from "../../../domain/portfolio/constants.js";
-import { isManualIncomeAsset } from "../../../domain/portfolio/assetCalculations.js";
+import {
+  isFundAsset,
+  isStockAsset,
+  isManualIncomeAsset,
+} from "../../../domain/portfolio/assetCalculations.js";
 import Modal from "../common/Modal.jsx";
 import Field from "../common/Field.jsx";
 
@@ -12,8 +15,8 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
   const target = subAsset || asset;
   const isUSD = target.currency === "USD";
   const rate = usdThbRate;
-  const isFund = !!target.finnomenaCode?.trim();
-  const isStock = !!target.yahooSymbol?.trim() || STOCK_GROUP_TYPES.has(target.type) || target.type === "stock" || target.type === "us_stocks" || target.type === "thai_stocks";
+  const isFund = isFundAsset(target);
+  const isStock = isStockAsset(target);
   const isManualIncome = isManualIncomeAsset(target);
 
   const [form, setForm] = useState({
@@ -118,12 +121,11 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
         </Field>
       </div>
 
-      <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
-        <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
-      </Field>
-
-      {showPriceFields && (
-        <div style={{ display: "grid", gridTemplateColumns: isFund || isStock ? "1fr 1fr" : "1fr", gap: 10 }}>
+      {showPriceFields ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
+            <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
+          </Field>
           <Field label={isFund ? "NAV (Price)" : "Price per Share"}>
             <input style={inputStyle} type="number" step="0.0001" value={form.price} onChange={e => set("price", e.target.value)} placeholder="0.0000" />
           </Field>
@@ -138,6 +140,10 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
             </Field>
           )}
         </div>
+      ) : (
+        <Field label={`Amount (${isUSD ? '$' : '฿'})`}>
+          <input style={inputStyle} type="number" step="0.01" value={form.amount} onChange={e => set("amount", e.target.value)} placeholder="0.00" autoFocus />
+        </Field>
       )}
 
       {isUSD && parseFloat(form.amount) > 0 && (

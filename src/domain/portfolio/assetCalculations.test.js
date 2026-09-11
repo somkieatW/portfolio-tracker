@@ -6,6 +6,8 @@ import {
   groupTotals,
   sanitizeAsset,
   isManualIncomeAsset,
+  isFundAsset,
+  isStockAsset,
   sumIncomeTransactions,
 } from "./assetCalculations.js";
 
@@ -66,6 +68,31 @@ describe("isManualIncomeAsset", () => {
     expect(isManualIncomeAsset({ type: "bond" })).toBe(true);
     expect(isManualIncomeAsset({ type: "cash", yahooSymbol: "PTT.BK" })).toBe(false);
     expect(isManualIncomeAsset({ type: "equity", finnomenaCode: "K-SET50" })).toBe(false);
+  });
+});
+
+describe("isFundAsset / isStockAsset", () => {
+  it("detects funds by finnomenaCode or units held", () => {
+    expect(isFundAsset({ finnomenaCode: "K-SET50" })).toBe(true);
+    expect(isFundAsset({ units: 100 })).toBe(true);
+    expect(isFundAsset({ type: "cash" })).toBe(false);
+    expect(isFundAsset({ type: "bond" })).toBe(false);
+  });
+
+  it("detects stocks by yahooSymbol or qty held", () => {
+    expect(isStockAsset({ yahooSymbol: "PTT.BK" })).toBe(true);
+    expect(isStockAsset({ qty: 50 })).toBe(true);
+    expect(isStockAsset({ type: "us_stocks" })).toBe(true);
+  });
+
+  it("prefers fund over stock when both units and finnomenaCode apply", () => {
+    expect(isFundAsset({ finnomenaCode: "K-SET50", units: 100 })).toBe(true);
+    expect(isStockAsset({ finnomenaCode: "K-SET50", units: 100 })).toBe(false);
+  });
+
+  it("does not classify manual cash/bond as fund or stock", () => {
+    expect(isFundAsset({ type: "cash", currentValue: 10000 })).toBe(false);
+    expect(isStockAsset({ type: "bond", currentValue: 20000 })).toBe(false);
   });
 });
 
