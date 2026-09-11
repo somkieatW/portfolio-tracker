@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import Auth from "../Auth.jsx";
-import AIChat from "../AIChat.jsx";
 import { usePortfolioApp } from "../application/hooks/usePortfolioApp.js";
 import { TABS, STOCK_GROUP_TYPES } from "../domain/portfolio/constants.js";
 import { calcPL } from "../domain/portfolio/assetCalculations.js";
@@ -9,7 +8,7 @@ import { buildPnlData } from "../domain/portfolio/snapshotSeries.js";
 import { buildPerformanceSeries, formatPriceAge } from "../domain/portfolio/performance.js";
 import { buildBenchmarkSeries, mergeBenchmarkIntoSeries } from "../domain/portfolio/benchmark.js";
 import { fetchHistoricalDailyCloses } from "../infrastructure/external/yahooFinanceService.js";
-import { T, inputStyle } from "./theme/tokens.js";
+import { T } from "./theme/tokens.js";
 import { fmt, fmtTs } from "./utils/format.js";
 import SaveBadge from "./components/common/SaveBadge.jsx";
 import Field from "./components/common/Field.jsx";
@@ -80,7 +79,6 @@ export default function App() {
     specPct,
     specCap,
     specOver,
-    projection,
     pieData,
     handleRefreshPrices,
     saveAsset,
@@ -410,53 +408,6 @@ export default function App() {
           </div>
         )}
 
-        {tab === "projection" && (
-          <div>
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-              <p style={{ margin: "0 0 10px", fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>Monthly DCA Amount</p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                {[500, 1000, 2000, 5000].map(v => (
-                  <button key={v} onClick={() => updateSettings("dca", v)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${settings.dca === v ? T.accent : T.border}`, background: settings.dca === v ? T.accentGlow : "transparent", color: settings.dca === v ? T.accent : T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: settings.dca === v ? 700 : 400 }}>฿{fmt(v)}</button>
-                ))}
-              </div>
-              <input type="range" min="100" max="10000" step="100" value={settings.dca} onChange={e => updateSettings("dca", Number(e.target.value))} style={{ width: "100%", accentColor: T.accent }} />
-              <p style={{ margin: "6px 0 0", textAlign: "center", fontSize: 13, color: T.accent, fontWeight: 700 }}>฿{fmt(settings.dca)}/month</p>
-            </div>
-
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 8px", marginBottom: 14 }}>
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={projection}>
-                  <defs>
-                    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={T.accent} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={T.accent} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
-                  <XAxis dataKey="month" stroke={T.muted} tick={{ fontSize: 10 }} />
-                  <YAxis stroke={T.muted} tick={{ fontSize: 10 }} tickFormatter={v => `฿${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={v => [`฿${fmt(v)}`, "Portfolio Value"]} contentStyle={{ background: T.card, border: `1px solid ${T.border}`, fontFamily: "inherit", borderRadius: 8 }} />
-                  <Area type="monotone" dataKey="value" stroke={T.accent} fill="url(#grad)" strokeWidth={2.5} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              {[
-                { label: "Current Value", value: `฿${fmt(totalInvest)}`, color: T.text },
-                { label: "In 12 Months", value: `฿${fmt(projection[12].value)}`, color: T.green },
-                { label: "DCA Added", value: `฿${fmt(settings.dca * 12)}`, color: T.accent },
-              ].map(s => (
-                <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-            <p style={{ fontSize: 11, color: T.dim, marginTop: 14, lineHeight: 1.7, textAlign: "center" }}>Assumes ~10% annual return. Past performance ≠ future results. Not financial advice.</p>
-          </div>
-        )}
-
         {tab === "history" && (
           <div>
             <SnapshotRangeSelector snapshotRange={snapshotRange} setSnapshotRange={setSnapshotRange} />
@@ -485,17 +436,6 @@ export default function App() {
               </>
             )}
           </div>
-        )}
-
-        {tab === "ai" && (
-          <AIChat
-            assets={normalizedAssets.filter(a => !a.isSpeculative)}
-            snapshots={snapshots}
-            transactions={transactions}
-            netWorth={netWorth}
-            settings={settings}
-            updateSettings={updateSettings}
-          />
         )}
 
         {tab === "settings" && (
@@ -538,62 +478,6 @@ export default function App() {
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.orange }}>{settings.specCap}%</span>
                   <span style={{ fontSize: 11, color: T.muted }}>30%</span>
                 </div>
-              </Field>
-              <Field label={`Default DCA — ฿${fmt(settings.dca)}/month`} hint="Used in projection calculations">
-                <input type="range" min="100" max="10000" step="100" value={settings.dca} onChange={e => updateSettings("dca", Number(e.target.value))} style={{ width: "100%", marginBottom: 4, accentColor: T.accent }} />
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: T.muted }}>฿100</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>฿{fmt(settings.dca)}</span>
-                  <span style={{ fontSize: 11, color: T.muted }}>฿10,000</span>
-                </div>
-              </Field>
-
-              <div style={{ marginTop: 24, borderTop: `1px solid ${T.border}`, paddingTop: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 4 }}>AI Context & Data Export</p>
-                <p style={{ fontSize: 11, color: T.muted, marginBottom: 16 }}>Copy the exact JSON data sent to your AI Portfolio Assistant for external analysis or debugging.</p>
-                <button
-                  onClick={() => {
-                    const aiData = {
-                      netWorth,
-                      coreAssets: normalizedAssets
-                        .filter(a => !a.isSpeculative)
-                        .map(a => ({ name: a.name, value: a.currentValue, type: a.type, currency: a.currency, invested: a.invested })),
-                      historicalSnapshots: snapshots.map(s => ({
-                        date: s.snapshot_date,
-                        open: s.o_invest_thb ?? s.total_invest_thb,
-                        high: s.h_invest_thb ?? s.total_invest_thb,
-                        low: s.l_invest_thb ?? s.total_invest_thb,
-                        close: s.total_invest_thb,
-                      })),
-                    };
-                    navigator.clipboard.writeText(JSON.stringify(aiData, null, 2));
-                    alert("AI Context Data copied to clipboard!");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: 10,
-                    border: `1px solid ${T.accent}`,
-                    background: T.accentGlow,
-                    color: T.accent,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  Copy AI Debug Data (JSON)
-                </button>
-              </div>
-              <Field label="Gemini API Key" hint="Required for AI Assistant.">
-                <input style={inputStyle} type="password" value={settings.geminiApiKey || ""} onChange={e => updateSettings("geminiApiKey", e.target.value)} placeholder="AIzaSy..." />
               </Field>
             </div>
 

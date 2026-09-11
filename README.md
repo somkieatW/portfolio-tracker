@@ -9,7 +9,6 @@ A personal wealth management dashboard built with React + Vite + Supabase.
 - Add / edit / delete any asset with full configurability
 - Live P&L calculation per asset
 - Speculation cap enforcement (configurable %)
-- 12-month DCA projection with area chart
 - **Multi-device sync via Supabase** — open on phone and laptop, data stays in sync
 - Auto-save with visual save indicator
 

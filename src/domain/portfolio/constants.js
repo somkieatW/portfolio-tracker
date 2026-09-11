@@ -18,7 +18,7 @@ export const STOCK_GROUP_TYPES = new Set(["thai_stocks", "us_stocks"]);
 
 export const DEFAULT_ASSETS = [];
 
-export const DEFAULT_SETTINGS = { dca: 1000, specCap: 10 };
+export const DEFAULT_SETTINGS = { specCap: 10 };
 
 export const CHART_PALETTE = [
   "#3b82f6", "#22c55e", "#eab308", "#f97316", "#a855f7",
@@ -31,7 +31,5 @@ export const TABS = [
   { id: "assets", label: "\ud83d\udcbc Assets" },
   { id: "speculative", label: "\u26a1 Speculation" },
   { id: "history", label: "\ud83d\udcc8 History" },
-  { id: "projection", label: "\ud83d\udd2e Projection" },
-  { id: "ai", label: "\u2728 AI Assistant" },
   { id: "settings", label: "\u2699 Settings" },
 ];

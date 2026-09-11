@@ -12,14 +12,6 @@ export function computePortfolioMetrics(investments, speculative, settings, tota
   const specCap = grandTotal * (settings.specCap / 100);
   const specOver = totalSpec - specCap;
 
-  const projection = (() => {
-    let bal = totalInvest;
-    return Array.from({ length: 13 }, (_, i) => {
-      if (i > 0) bal = bal * 1.008 + settings.dca;
-      return { month: i === 0 ? "Now" : `M${i}`, value: Math.round(bal) };
-    });
-  })();
-
   // Group investments by category for the pie chart
   const pieData = (() => {
     const groups = investments.reduce((acc, a) => {
@@ -52,7 +44,6 @@ export function computePortfolioMetrics(investments, speculative, settings, tota
     specPct,
     specCap,
     specOver,
-    projection,
     pieData,
   };
 }

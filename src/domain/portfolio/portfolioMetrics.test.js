@@ -9,7 +9,7 @@ describe("computePortfolioMetrics", () => {
   const speculative = [
     { currentValue: 1000 },
   ];
-  const settings = { dca: 1000, specCap: 10 };
+  const settings = { specCap: 10 };
 
   it("computes totals, P&L, and speculation cap", () => {
     const m = computePortfolioMetrics(investments, speculative, settings, 17500);
@@ -26,12 +26,5 @@ describe("computePortfolioMetrics", () => {
     expect(m.pieData).toHaveLength(2);
     expect(m.pieData[0].name).toBe("Equity / Stock Fund");
     expect(Number(m.pieData[0].pct)).toBeCloseTo(68.57, 1);
-  });
-
-  it("builds a 13-month projection starting from total invest", () => {
-    const m = computePortfolioMetrics(investments, speculative, settings, 17500);
-    expect(m.projection).toHaveLength(13);
-    expect(m.projection[0]).toEqual({ month: "Now", value: 17500 });
-    expect(m.projection[1].value).toBeGreaterThan(17500);
   });
 });

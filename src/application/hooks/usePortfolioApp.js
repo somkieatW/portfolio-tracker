@@ -165,7 +165,6 @@ export function usePortfolioApp() {
     specPct,
     specCap,
     specOver,
-    projection,
     pieData,
   } = computePortfolioMetrics(investments, speculative, settings, totalInvest);
 
@@ -554,7 +553,6 @@ export function usePortfolioApp() {
     specPct,
     specCap,
     specOver,
-    projection,
     pieData,
     handleRefreshPrices,
     saveAsset,
