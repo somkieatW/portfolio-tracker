@@ -13,44 +13,17 @@
  */
 
 import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
+import { requireSupabaseEnv, fetchAllPaginated, sbUpsert } from './lib/supabaseAdmin.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const YAHOO_BASE = 'https://query1.finance.yahoo.com';
 const FINNOMENA_BASE = 'https://www.finnomena.com';
 const STALE_HOURS = 6;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
-    process.exit(1);
-}
-
-// ─── Supabase REST helpers ────────────────────────────────────────────────────
-const sbHeaders = {
-    'apikey': SUPABASE_SERVICE_KEY,
-    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=minimal',
-};
-
-async function sbGet(path) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, { headers: sbHeaders });
-    if (!res.ok) throw new Error(`Supabase GET ${path} → ${res.status}: ${await res.text()}`);
-    return res.json();
-}
-
-async function sbUpsert(table, rows) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-        method: 'POST',
-        headers: { ...sbHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(rows),
-    });
-    if (!res.ok) throw new Error(`Supabase upsert ${table} → ${res.status}: ${await res.text()}`);
-}
+requireSupabaseEnv();
 
 // ─── Discover symbols from all portfolios ────────────────────────────────────
 async function discoverSymbols() {
-    const rows = await sbGet('/portfolio?select=assets');
+    const rows = await fetchAllPaginated('/portfolio?select=assets', { pageSize: 10 });
     const yahooSymbols = new Map(); // symbol → type  ('thai_stock' | 'us_stock')
     const fundsSet = new Set(); // finnomenaCode values
     const fxNeeded = false;     // we always fetch USDTHB=X

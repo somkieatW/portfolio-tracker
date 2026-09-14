@@ -14,38 +14,9 @@
 
 import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
 import { holdingsAsOf, subHoldingsAsOf } from '../src/domain/portfolio/historicalHoldings.js';
+import { requireSupabaseEnv, fetchAllPaginated, sbGet, sbUpsert } from './lib/supabaseAdmin.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
-    process.exit(1);
-}
-
-// ─── Supabase REST helpers ────────────────────────────────────────────────────
-const sbHeaders = {
-    'apikey': SUPABASE_SERVICE_KEY,
-    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=minimal',
-};
-
-async function sbGet(path) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, { headers: sbHeaders });
-    if (!res.ok) throw new Error(`Supabase GET ${path} → ${res.status}: ${await res.text()}`);
-    return res.json();
-}
-
-async function sbUpsert(table, rows, onConflict = null) {
-    const qs = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${qs}`, {
-        method: 'POST',
-        headers: { ...sbHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(rows),
-    });
-    if (!res.ok) throw new Error(`Supabase upsert ${table} → ${res.status}: ${await res.text()}`);
-}
+requireSupabaseEnv();
 
 // ─── Stock group types (mirror frontend) ─────────────────────────────────────
 const STOCK_GROUP_TYPES = new Set(['us_stocks', 'thai_stocks']);
@@ -136,8 +107,8 @@ async function main() {
     console.log(`[${now.toISOString()}] Recording portfolio snapshot for ${snapshotDate}…`);
 
     // 1. Load all portfolios and transactions (for holdings-as-of date)
-    const portfolios = await sbGet('/portfolio?select=user_id,assets');
-    const allTx = await sbGet('/transactions?select=*');
+    const portfolios = await fetchAllPaginated('/portfolio?select=user_id,assets', { pageSize: 10 });
+    const allTx = await fetchAllPaginated('/transactions?select=*', { pageSize: 500 });
     const txByUser = new Map();
     for (const tx of allTx) {
         if (!txByUser.has(tx.user_id)) txByUser.set(tx.user_id, []);
