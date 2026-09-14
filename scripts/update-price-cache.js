@@ -3,7 +3,7 @@
  * update-price-cache.js
  *
  * GitHub Actions batch job — runs every 6 hours.
- * 1. Reads all user portfolios from Supabase to discover all symbols.
+ * 1. Reads symbol registry from tracked_symbols (no portfolio JSON scan).
  * 2. Fetches live prices from Yahoo Finance and Finnomena (server-side, no CORS).
  * 3. Upserts results into the `price_cache` table.
  *
@@ -12,43 +12,24 @@
  *   SUPABASE_SERVICE_KEY  — service role key (bypasses RLS)
  */
 
-import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
-import { requireSupabaseEnv, fetchAllPaginated, sbUpsert } from './lib/supabaseAdmin.js';
+import { requireSupabaseEnv, sbGet, sbUpsert } from './lib/supabaseAdmin.js';
 
 const YAHOO_BASE = 'https://query1.finance.yahoo.com';
 const FINNOMENA_BASE = 'https://www.finnomena.com';
-const STALE_HOURS = 6;
 
 requireSupabaseEnv();
 
-// ─── Discover symbols from all portfolios ────────────────────────────────────
-async function discoverSymbols() {
-    const rows = await fetchAllPaginated('/portfolio?select=assets', { pageSize: 10 });
-    const yahooSymbols = new Map(); // symbol → type  ('thai_stock' | 'us_stock')
-    const fundsSet = new Set(); // finnomenaCode values
-    const fxNeeded = false;     // we always fetch USDTHB=X
+// ─── Load symbols from tracked_symbols registry ──────────────────────────────
+async function loadTrackedSymbols() {
+    const rows = await sbGet('/tracked_symbols?select=symbol,type,source');
+    const yahooSymbols = new Map();
+    const fundsSet = new Set();
 
     for (const row of rows) {
-        const assets = Array.isArray(row.assets) ? row.assets : [];
-        for (const asset of assets) {
-            // Finnomena fund code on a regular asset
-            if (asset.finnomenaCode?.trim()) {
-                fundsSet.add(asset.finnomenaCode.trim());
-            }
-            // Top-level Yahoo symbol (e.g., Gold, Crypto, standalone stocks)
-            if (asset.yahooSymbol?.trim()) {
-                const sym = normalizeYahooSymbol(asset.yahooSymbol);
-                const type = asset.currency === 'USD' ? 'us_stock' : (asset.type === 'gold' ? 'commodity' : 'other');
-                yahooSymbols.set(sym, type);
-            }
-            // Sub-assets inside stock groups
-            for (const sub of asset.subAssets || []) {
-                if (sub.yahooSymbol?.trim()) {
-                    const sym = normalizeYahooSymbol(sub.yahooSymbol);
-                    const type = sub.currency === 'USD' ? 'us_stock' : 'thai_stock';
-                    yahooSymbols.set(sym, type);
-                }
-            }
+        if (row.source === 'finnomena') {
+            fundsSet.add(row.symbol);
+        } else if (row.source === 'yahoo' && row.symbol !== 'USDTHB=X') {
+            yahooSymbols.set(row.symbol, row.type);
         }
     }
 
@@ -121,7 +102,7 @@ async function fetchUSDTHBRate() {
 async function main() {
     console.log(`[${new Date().toISOString()}] Starting price cache update…`);
 
-    const { yahooSymbols, fundsSet } = await discoverSymbols();
+    const { yahooSymbols, fundsSet } = await loadTrackedSymbols();
     console.log(`Found ${yahooSymbols.size} stock symbols, ${fundsSet.size} fund codes`);
 
     const rows = [];

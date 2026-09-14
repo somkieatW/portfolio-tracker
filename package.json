@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "backfill:snapshots": "node scripts/backfill-portfolio-snapshots.js",
     "sanitize:symbols": "node scripts/sanitize-portfolio-symbols.js",
-    "verify:snapshots": "node scripts/verify-snapshots.js"
+    "verify:snapshots": "node scripts/verify-snapshots.js",
+    "sync:symbols": "node scripts/sync-tracked-symbols.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

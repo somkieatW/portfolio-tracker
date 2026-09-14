@@ -1,7 +1,8 @@
-import { supabase, getPriceCache } from "../../infrastructure/persistence/supabase.js";
+import { supabase, getPriceCache, syncTrackedSymbols } from "../../infrastructure/persistence/supabase.js";
 import { fetchStockPrice, fetchUSDTHBRate } from "../../infrastructure/external/yahooFinanceService.js";
 import { fetchCurrentNAV } from "../../infrastructure/external/finnomenaService.js";
 import { normalizeYahooSymbol, getCacheEntry } from "../../domain/pricing/yahooSymbol.js";
+import { collectSymbolKeys } from "../../domain/pricing/trackedSymbols.js";
 import { createPool } from "../../infrastructure/external/concurrencyPool.js";
 
 const UPSERT_TIMEOUT_MS = 10_000;
@@ -41,18 +42,6 @@ export function applyPriceCacheToAssets(assets, cache) {
     }
     return a;
   });
-}
-
-function collectSymbols(assets) {
-  const symbols = new Set(["USDTHB=X"]);
-  for (const a of assets) {
-    if (a.finnomenaCode?.trim()) symbols.add(a.finnomenaCode.trim());
-    if (a.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(a.yahooSymbol));
-    for (const sub of a.subAssets || []) {
-      if (sub.yahooSymbol?.trim()) symbols.add(normalizeYahooSymbol(sub.yahooSymbol));
-    }
-  }
-  return symbols;
 }
 
 async function upsertPrice(row) {
@@ -162,7 +151,13 @@ export async function refreshPortfolioPrices(assets) {
 
   await Promise.allSettled(jobs.map(fn => fn()));
 
-  const cache = await getPriceCache([...collectSymbols(assets)]);
+  try {
+    await syncTrackedSymbols(assets);
+  } catch (e) {
+    console.warn("[tracked_symbols] sync failed:", e.message);
+  }
+
+  const cache = await getPriceCache(collectSymbolKeys(assets));
   return { cache, errors, updated, fx };
 }
 
