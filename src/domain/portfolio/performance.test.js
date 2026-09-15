@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildContributionTimeline,
+  buildPortfolioContributionTimeline,
   buildAssetContributionTimeline,
   contributedUpTo,
   buildPerformanceSeries,
@@ -55,12 +56,52 @@ describe("buildPerformanceSeries", () => {
     { asset_id: "a1", type: "buy", date: "2026-01-15", amount_thb: 5000, created_at: "2026-01-15" },
   ];
 
+  const coreAssets = [{ id: "a1", type: "equity" }];
+
   it("separates market gain from contributions", () => {
-    const series = buildPerformanceSeries(snapshots, txs, ["a1"]);
+    const series = buildPerformanceSeries(snapshots, txs, coreAssets);
     expect(series[0].contributed).toBe(10000);
     expect(series[0].marketGain).toBe(0);
     expect(series[1].contributed).toBe(15000);
     expect(series[1].marketGain).toBe(1000);
+  });
+
+  it("portfolio: no false market gain after cash interest withdrawal", () => {
+    const mixedSnapshots = [
+      { snapshot_date: "2026-01-01", total_invest_thb: 60000, asset_breakdown: [] },
+      { snapshot_date: "2026-07-01", total_invest_thb: 60149, asset_breakdown: [] },
+      { snapshot_date: "2026-09-11", total_invest_thb: 60000, asset_breakdown: [] },
+    ];
+    const mixedTxs = [
+      { asset_id: "fund1", type: "buy", date: "2026-01-01", amount_thb: 50000, created_at: "2026-01-01" },
+      { asset_id: "cash1", type: "buy", date: "2026-01-01", amount_thb: 10000, created_at: "2026-01-01" },
+      { asset_id: "cash1", type: "interest", date: "2026-06-30", amount_thb: 149, created_at: "2026-06-30" },
+      { asset_id: "cash1", type: "sell", date: "2026-09-11", amount_thb: 149, created_at: "2026-09-11" },
+    ];
+    const assets = [
+      { id: "fund1", type: "equity", finnomenaCode: "K-SET50" },
+      { id: "cash1", type: "cash" },
+    ];
+    const series = buildPerformanceSeries(mixedSnapshots, mixedTxs, assets);
+    expect(series[1].contributed).toBe(60000);
+    expect(series[1].marketGain).toBe(149);
+    expect(series[2].contributed).toBe(60000);
+    expect(series[2].marketGain).toBe(0);
+  });
+});
+
+describe("buildPortfolioContributionTimeline", () => {
+  it("sums per-asset contributed with income-first sells on cash", () => {
+    const txs = [
+      { asset_id: "fund1", type: "buy", date: "2026-01-01", amount_thb: 50000, created_at: "2026-01-01" },
+      { asset_id: "cash1", type: "buy", date: "2026-01-01", amount_thb: 10000, created_at: "2026-01-01" },
+      { asset_id: "cash1", type: "interest", date: "2026-06-30", amount_thb: 149, created_at: "2026-06-30" },
+      { asset_id: "cash1", type: "sell", date: "2026-09-11", amount_thb: 149, created_at: "2026-09-11" },
+    ];
+    const assets = [{ id: "fund1", type: "equity" }, { id: "cash1", type: "cash" }];
+    const timeline = buildPortfolioContributionTimeline(txs, assets);
+    expect(timeline.get("2026-01-01")).toBe(60000);
+    expect(timeline.get("2026-09-11")).toBe(60000);
   });
 });
 

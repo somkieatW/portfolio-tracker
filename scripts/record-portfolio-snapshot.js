@@ -181,7 +181,10 @@ async function main() {
 
         for (const asset of assets) {
             const currentValue = computeAssetValue(asset, priceCache, transactions, snapshotDate);
-            const invested = Number(asset.invested) || 0;
+            const assetTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id);
+            const invested = isManualIncomeAsset(asset)
+                ? manualIncomeState(assetTxs, snapshotDate).principal
+                : (Number(asset.invested) || 0);
             const existingEntry = existingBreakdown.find(e => e.id === asset.id);
             const prevEntry = prevBreakdown.find(e => e.id === asset.id);
             const prevAssetClose = prevEntry != null ? Number(prevEntry.currentValue) : null;

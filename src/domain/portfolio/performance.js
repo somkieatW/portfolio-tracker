@@ -2,6 +2,7 @@
  * Portfolio performance helpers — separates market gains from cash flows.
  */
 
+import { isManualIncomeAsset } from "./assetCalculations.js";
 import { buildManualIncomeTimeline, manualIncomeUpTo } from "./manualIncomeLedger.js";
 
 export function formatPriceAge(iso, staleHours = 18) {
@@ -58,6 +59,38 @@ export function buildAssetContributionTimeline(transactions) {
     if (t.type === "buy") running += Number(t.amount_thb || 0);
     else running -= Math.abs(Number(t.amount_thb || 0));
     byDate.set(t.date, +running.toFixed(2));
+  }
+  return byDate;
+}
+
+/** Portfolio net contributions — manual income assets use income-first sell accounting. */
+export function buildPortfolioContributionTimeline(transactions, coreAssets) {
+  const configs = (coreAssets || []).map(asset => {
+    const assetTxs = (transactions || []).filter(
+      t => t.asset_id === asset.id && !t.sub_asset_id,
+    );
+    if (isManualIncomeAsset(asset)) {
+      return { timeline: buildManualIncomeTimeline(assetTxs), manual: true };
+    }
+    return { timeline: buildAssetContributionTimeline(assetTxs), manual: false };
+  });
+
+  const allDates = new Set();
+  for (const { timeline } of configs) {
+    for (const d of timeline.keys()) allDates.add(d);
+  }
+
+  const byDate = new Map();
+  for (const date of [...allDates].sort()) {
+    let sum = 0;
+    for (const { timeline, manual } of configs) {
+      if (manual) {
+        sum += manualIncomeUpTo(timeline, date)?.principal ?? 0;
+      } else {
+        sum += contributedUpTo(timeline, date);
+      }
+    }
+    byDate.set(date, +sum.toFixed(2));
   }
   return byDate;
 }
@@ -138,9 +171,9 @@ export function buildAssetPerformanceSeries(assetRows, transactions, liveClose, 
 /**
  * Value vs cumulative contributions — shows market gain separate from deposits.
  */
-export function buildPerformanceSeries(snapshots, transactions, coreAssetIds, liveClose) {
+export function buildPerformanceSeries(snapshots, transactions, coreAssets, liveClose) {
   if (!snapshots?.length) return [];
-  const byDate = buildContributionTimeline(transactions, coreAssetIds);
+  const byDate = buildPortfolioContributionTimeline(transactions, coreAssets);
   const hasTx = byDate.size > 0;
 
   const series = snapshots.map(s => {

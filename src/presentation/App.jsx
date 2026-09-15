@@ -69,7 +69,6 @@ export default function App() {
     normalizedAssets,
     investments,
     speculative,
-    coreAssetIds,
     totalInvest,
     totalInvested,
     totalSpec,
@@ -105,7 +104,7 @@ export default function App() {
       setPerfWithBenchmark([]);
       return;
     }
-    const base = buildPerformanceSeries(snapshots, transactions, coreAssetIds, totalInvest);
+    const base = buildPerformanceSeries(snapshots, transactions, investments, totalInvest);
     const from = snapshots[0].snapshot_date;
     const to = snapshots[snapshots.length - 1].snapshot_date;
     fetchHistoricalDailyCloses("^SET.BK", from, to)
@@ -114,7 +113,7 @@ export default function App() {
         setPerfWithBenchmark(mergeBenchmarkIntoSeries(base, bench));
       })
       .catch(() => setPerfWithBenchmark(base));
-  }, [tab, snapshots, transactions, coreAssetIds, totalInvest]);
+  }, [tab, snapshots, transactions, investments, totalInvest]);
 
   if (isAuthLoading || (userId && loadStatus === "loading")) {
     return (
@@ -133,7 +132,7 @@ export default function App() {
   const pnlData = buildPnlData(snapshots, totalInvest);
   const perfSeries = perfWithBenchmark.length
     ? perfWithBenchmark
-    : buildPerformanceSeries(snapshots, transactions, coreAssetIds, totalInvest);
+    : buildPerformanceSeries(snapshots, transactions, investments, totalInvest);
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "'Inter', sans-serif" }}>
