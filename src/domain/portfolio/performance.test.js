@@ -110,6 +110,25 @@ describe("buildAssetPerformanceSeries", () => {
     expect(series[2].marketGain).toBe(773);
   });
 
+  it("manual income: no false market gain after interest withdrawal", () => {
+    const rows = [
+      { snapshot_date: "2026-01-01", total_invest_thb: 10000, invested: 10000 },
+      { snapshot_date: "2026-07-01", total_invest_thb: 10149, invested: 10000 },
+      { snapshot_date: "2026-09-11", total_invest_thb: 10000, invested: 10000 },
+    ];
+    const txs = [
+      { type: "buy", date: "2026-01-01", amount_thb: 10000, created_at: "2026-01-01" },
+      { type: "interest", date: "2026-06-30", amount_thb: 149, created_at: "2026-06-30" },
+      { type: "sell", date: "2026-09-11", amount_thb: 149, created_at: "2026-09-11" },
+    ];
+    const series = buildAssetPerformanceSeries(rows, txs, 10000, { isManualIncome: true });
+    expect(series[1].contributed).toBe(10000);
+    expect(series[1].marketGain).toBe(149);
+    expect(series[2].contributed).toBe(10000);
+    expect(series[2].marketGain).toBe(0);
+    expect(series[2].value).toBe(10000);
+  });
+
   it("falls back to snapshot invested when no transactions", () => {
     const rows = [
       { snapshot_date: "2026-01-01", total_invest_thb: 5000, invested: 4500 },

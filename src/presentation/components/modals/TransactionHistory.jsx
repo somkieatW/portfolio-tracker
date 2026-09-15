@@ -1,5 +1,6 @@
 import { T } from "../../theme/tokens.js";
 import { fmt } from "../../utils/format.js";
+import { isManualIncomeAsset } from "../../../domain/portfolio/assetCalculations.js";
 import { buildAssetSnapshotRows, buildPnlData, SNAPSHOT_RANGES } from "../../../domain/portfolio/snapshotSeries.js";
 import { buildAssetPerformanceSeries, performanceSummary } from "../../../domain/portfolio/performance.js";
 import Modal from "../common/Modal.jsx";
@@ -10,8 +11,9 @@ import PerformanceChart from "../charts/PerformanceChart.jsx";
 export default function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots, liveValue, snapshotRange, setSnapshotRange, snapshotLoading }) {
   const name = subAsset ? subAsset.name : asset.name;
   const targetId = subAsset ? subAsset.id : asset.id;
+  const manualIncome = isManualIncomeAsset(subAsset ?? asset);
   const assetRows = buildAssetSnapshotRows(snapshots, targetId);
-  const perfSeries = buildAssetPerformanceSeries(assetRows, transactions, liveValue);
+  const perfSeries = buildAssetPerformanceSeries(assetRows, transactions, liveValue, { isManualIncome: manualIncome });
   const perfSummary = performanceSummary(perfSeries);
   // Chart uses snapshot history only — live portfolio value can disagree when
   // stored snapshot units lag transaction-derived holdings.
@@ -39,7 +41,7 @@ export default function TransactionHistory({ asset, subAsset, transactions, onDe
               {[
                 { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
                 { label: "Contributed", value: `฿${fmt(perfSummary.contributed ?? 0)}`, color: T.muted },
-                { label: `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
+                { label: manualIncome ? `Income earned (${rangeLabel})` : `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
               ].map(s => (
                 <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>

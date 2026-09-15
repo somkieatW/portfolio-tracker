@@ -2,6 +2,8 @@
  * Portfolio performance helpers — separates market gains from cash flows.
  */
 
+import { buildManualIncomeTimeline, manualIncomeUpTo } from "./manualIncomeLedger.js";
+
 export function formatPriceAge(iso, staleHours = 18) {
   if (!iso) return { label: "Never synced", stale: true };
   const ageMs = Date.now() - new Date(iso).getTime();
@@ -64,8 +66,47 @@ export function buildAssetContributionTimeline(transactions) {
  * Per-asset value vs cumulative contributions.
  * `assetRows` from buildAssetSnapshotRows (snapshot_date, total_invest_thb, invested).
  */
-export function buildAssetPerformanceSeries(assetRows, transactions, liveClose) {
+export function buildAssetPerformanceSeries(assetRows, transactions, liveClose, { isManualIncome = false } = {}) {
   if (!assetRows?.length) return [];
+
+  if (isManualIncome) {
+    const ledger = buildManualIncomeTimeline(transactions);
+    const firstTxDate = ledger.size > 0 ? [...ledger.keys()].sort()[0] : null;
+
+    const series = assetRows.map(row => {
+      const snapshotValue = Number(row.total_invest_thb) || 0;
+      const snapshotInvested = Number(row.invested) || 0;
+
+      if (!firstTxDate || row.snapshot_date < firstTxDate) {
+        return {
+          date: row.snapshot_date,
+          value: snapshotValue,
+          contributed: snapshotInvested,
+          marketGain: +(snapshotValue - snapshotInvested).toFixed(2),
+        };
+      }
+
+      const state = manualIncomeUpTo(ledger, row.snapshot_date);
+      const contributed = state?.principal ?? snapshotInvested;
+      const value = state?.value ?? snapshotValue;
+      const marketGain = state?.marketGain ?? +(value - contributed).toFixed(2);
+      return { date: row.snapshot_date, value, contributed, marketGain };
+    });
+
+    if (liveClose != null && series.length > 0) {
+      const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const last = series[series.length - 1];
+      const endState = manualIncomeUpTo(ledger, today) ?? manualIncomeUpTo(ledger, last.date);
+      if (last.date === today) {
+        last.value = liveClose;
+        last.contributed = endState?.principal ?? last.contributed;
+        last.marketGain = +(liveClose - last.contributed).toFixed(2);
+      }
+    }
+
+    return series;
+  }
+
   const byDate = buildAssetContributionTimeline(transactions);
   const hasTx = byDate.size > 0;
 

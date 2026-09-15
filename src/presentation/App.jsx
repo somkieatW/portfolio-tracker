@@ -558,7 +558,14 @@ export default function App() {
             ? transactions.filter(t => t.sub_asset_id === historyModal.subAsset.id)
             : transactions.filter(t => t.asset_id === historyModal.asset.id)}
           snapshots={snapshots}
-          liveValue={historyModal.subAsset?.currentValue ?? historyModal.asset.currentValue}
+          liveValue={(() => {
+            const parent = normalizedAssets.find(a => a.id === historyModal.asset.id);
+            if (historyModal.subAsset) {
+              return parent?.subAssets?.find(s => s.id === historyModal.subAsset.id)?.currentValue
+                ?? historyModal.subAsset.currentValue;
+            }
+            return parent?.currentValue ?? historyModal.asset.currentValue;
+          })()}
           snapshotRange={snapshotRange}
           setSnapshotRange={setSnapshotRange}
           snapshotLoading={snapshotLoading}

@@ -2,8 +2,8 @@ import {
   calcDerivedTotals,
   isManualIncomeAsset,
   sanitizeAsset,
-  sumIncomeTransactions,
 } from "./assetCalculations.js";
+import { manualIncomeState } from "./manualIncomeLedger.js";
 
 export function derivePortfolioAssets(assets, transactions, usdThbRate) {
   return assets.map(asset => {
@@ -35,10 +35,11 @@ export function derivePortfolioAssets(assets, transactions, usdThbRate) {
     }
 
     if (isManualIncomeAsset(asset)) {
-      const income = sumIncomeTransactions(transactions, asset.id);
-      if (assetTxs.length > 0 || income > 0) {
-        derived.invested = principal;
-        derived.currentValue = +(principal + income).toFixed(2);
+      const ledgerTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id);
+      const { principal: ledgerPrincipal, value } = manualIncomeState(ledgerTxs);
+      if (ledgerTxs.some(t => t.type === "buy" || t.type === "sell" || t.type === "interest" || t.type === "dividend")) {
+        derived.invested = ledgerPrincipal;
+        derived.currentValue = value;
       }
     }
 

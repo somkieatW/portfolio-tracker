@@ -13,7 +13,9 @@
  */
 
 import { normalizeYahooSymbol } from '../src/domain/pricing/yahooSymbol.js';
+import { isManualIncomeAsset } from '../src/domain/portfolio/assetCalculations.js';
 import { holdingsAsOf, subHoldingsAsOf } from '../src/domain/portfolio/historicalHoldings.js';
+import { manualIncomeState } from '../src/domain/portfolio/manualIncomeLedger.js';
 import { requireSupabaseEnv, fetchAllPaginated, sbGet, sbUpsert } from './lib/supabaseAdmin.js';
 
 requireSupabaseEnv();
@@ -53,7 +55,13 @@ function computeAssetValue(asset, priceCache, transactions, asOfDate) {
         }
     }
 
-    // Manual, forex, bonds, etc. — use stored currentValue (matches frontend)
+    // Cash/bond — derive value from transactions (sells consume income first)
+    if (isManualIncomeAsset(asset)) {
+        const assetTxs = (transactions || []).filter(t => t.asset_id === asset.id && !t.sub_asset_id);
+        return manualIncomeState(assetTxs, asOfDate).value;
+    }
+
+    // Other manual assets — use stored currentValue
     return Number(asset.currentValue) || 0;
 }
 

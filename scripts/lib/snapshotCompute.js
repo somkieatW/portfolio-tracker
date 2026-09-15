@@ -1,9 +1,11 @@
 import { normalizeYahooSymbol } from "../../src/domain/pricing/yahooSymbol.js";
+import { isManualIncomeAsset } from "../../src/domain/portfolio/assetCalculations.js";
 import {
   holdingsAsOf,
   subHoldingsAsOf,
   STOCK_GROUP_TYPES,
 } from "../../src/domain/portfolio/historicalHoldings.js";
+import { manualIncomeState } from "../../src/domain/portfolio/manualIncomeLedger.js";
 import { closeOnOrBefore } from "./yahooHistorical.js";
 
 function dailyOhlc(prevClose, currentVal) {
@@ -41,6 +43,11 @@ function assetValueOnDate(asset, transactions, priceMaps, usdThbByDate, dateStr,
       const isUSD = asset.currency === "USD";
       return isUSD ? qty * px * usdThb : qty * px;
     }
+  }
+
+  if (isManualIncomeAsset(asset)) {
+    const assetTxs = (transactions || []).filter(t => t.asset_id === asset.id && !t.sub_asset_id);
+    return manualIncomeState(assetTxs, dateStr).value;
   }
 
   const fb = manualFallback?.get(asset.id)?.get(dateStr);
