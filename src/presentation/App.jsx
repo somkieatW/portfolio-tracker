@@ -20,6 +20,7 @@ import StockSubForm from "./components/assets/StockSubForm.jsx";
 import AddInvestmentModal from "./components/modals/AddInvestmentModal.jsx";
 import UpdateValueModal from "./components/modals/UpdateValueModal.jsx";
 import TransactionHistory from "./components/modals/TransactionHistory.jsx";
+import TransferModal from "./components/modals/TransferModal.jsx";
 import PerformanceChart from "./components/charts/PerformanceChart.jsx";
 import SnapshotChartPanel from "./components/charts/SnapshotChartPanel.jsx";
 import SnapshotRangeSelector from "./components/charts/SnapshotRangeSelector.jsx";
@@ -89,7 +90,9 @@ export default function App() {
     deleteSubAsset,
     updateSubValue,
     saveTransaction,
+    transferFunds,
     deleteTx,
+    activeAssets,
     reorderAssets,
     resetToDefaults,
     showClosed,
@@ -255,7 +258,10 @@ export default function App() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{investments.length} Investment Assets</p>
-              <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => setModal("transfer")} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>⇄ Transfer</button>
+                <button onClick={() => { setEditingAsset(null); setModal("add"); }} style={{ background: T.accentGlow, border: `1px solid ${T.accent}44`, borderRadius: 8, color: T.accent, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add</button>
+              </div>
             </div>
             {investments.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: T.muted }}>
@@ -376,7 +382,10 @@ export default function App() {
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <p style={{ margin: 0, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{speculative.length} Speculative Assets</p>
-              <button onClick={() => { setEditingAsset({ isSpeculative: true }); setModal("add"); }} style={{ background: "#f9731620", border: `1px solid ${T.orange}44`, borderRadius: 8, color: T.orange, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add Spec</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => setModal("transfer")} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>⇄ Transfer</button>
+                <button onClick={() => { setEditingAsset({ isSpeculative: true }); setModal("add"); }} style={{ background: "#f9731620", border: `1px solid ${T.orange}44`, borderRadius: 8, color: T.orange, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>+ Add Spec</button>
+              </div>
             </div>
 
             {speculative.length === 0 && (
@@ -518,6 +527,14 @@ export default function App() {
       )}
       {modal === "update" && editingAsset && (
         <UpdateValueModal asset={editingAsset} usdThbRate={usdThbRate} onSave={(v) => updateValue(editingAsset.id, v)} onClose={() => { setModal(null); setEditingAsset(null); }} />
+      )}
+      {modal === "transfer" && (
+        <TransferModal
+          assets={activeAssets}
+          usdThbRate={usdThbRate}
+          onTransfer={transferFunds}
+          onClose={() => setModal(null)}
+        />
       )}
 
       {subModal === "add" && (

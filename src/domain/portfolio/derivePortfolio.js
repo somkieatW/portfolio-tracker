@@ -1,5 +1,7 @@
 import {
   calcDerivedTotals,
+  deriveBalanceLedgerValue,
+  isBalanceLedgerAsset,
   isManualIncomeAsset,
   sanitizeAsset,
 } from "./assetCalculations.js";
@@ -40,6 +42,15 @@ export function derivePortfolioAssets(assets, transactions, usdThbRate) {
       if (ledgerTxs.some(t => t.type === "buy" || t.type === "sell" || t.type === "interest" || t.type === "dividend")) {
         derived.invested = ledgerPrincipal;
         derived.currentValue = value;
+      }
+    } else if (isBalanceLedgerAsset(asset)) {
+      const ledgerTxs = transactions.filter(t => t.asset_id === asset.id && !t.sub_asset_id);
+      const hasLedgerActivity = ledgerTxs.some(t =>
+        ["buy", "sell", "dividend", "interest", "fee"].includes(t.type),
+      );
+      if (hasLedgerActivity) {
+        derived.invested = principal;
+        derived.currentValue = deriveBalanceLedgerValue(asset, transactions, principal);
       }
     }
 

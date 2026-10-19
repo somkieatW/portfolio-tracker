@@ -95,6 +95,23 @@ describe("derivePortfolioAssets", () => {
     expect(cash.currentValue).toBe(10000);
   });
 
+  it("adds profit/dividend to speculative balance assets", () => {
+    const assets = [{
+      id: "fx1",
+      type: "forex",
+      isSpeculative: true,
+      currentValue: 10000,
+      invested: 10000,
+    }];
+    const txs = [
+      { asset_id: "fx1", type: "buy", date: "2026-01-01", amount_thb: 10000, created_at: "2026-01-01" },
+      { asset_id: "fx1", type: "dividend", date: "2026-06-01", amount_thb: 500, created_at: "2026-06-01" },
+    ];
+    const [derived] = derivePortfolioAssets(assets, txs, 35);
+    expect(derived.invested).toBe(10000);
+    expect(derived.currentValue).toBe(10500);
+  });
+
   it("does not apply dividend income to priced fund assets", () => {
     const assets = [{
       id: "fund1",

@@ -38,6 +38,32 @@ export function sumIncomeTransactions(transactions, assetId, subAssetId = null) 
     .reduce((sum, t) => sum + Math.abs(Number(t.amount_thb || 0)), 0);
 }
 
+export function sumFeeTransactions(transactions, assetId, subAssetId = null) {
+  return (transactions || [])
+    .filter(t =>
+      t.asset_id === assetId
+      && (subAssetId ? t.sub_asset_id === subAssetId : !t.sub_asset_id)
+      && t.type === "fee",
+    )
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount_thb || 0)), 0);
+}
+
+/** Manual-balance assets (crypto, forex, etc.) — not cash/bond ledger, not priced funds/stocks. */
+export function isBalanceLedgerAsset(asset) {
+  if (isManualIncomeAsset(asset)) return false;
+  if (isFundAsset(asset) || isStockAsset(asset)) return false;
+  return true;
+}
+
+/** Value for balance-ledger assets: cost basis + manual uplift + income − fees. */
+export function deriveBalanceLedgerValue(asset, transactions, principal) {
+  const income = sumIncomeTransactions(transactions, asset.id);
+  const fees = sumFeeTransactions(transactions, asset.id);
+  const stored = Number(asset.currentValue) || 0;
+  const uplift = Math.max(0, stored - principal);
+  return +(principal + uplift + income - fees).toFixed(2);
+}
+
 export function calcPL(a) {
   if (a.isSpeculative || a.invested === 0) return { pl: a.currentValue - a.invested, plPct: 0 };
   const pl = a.currentValue - a.invested;

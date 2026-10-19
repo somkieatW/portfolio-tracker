@@ -112,7 +112,7 @@ export default function AddInvestmentModal({ asset, subAsset, initialTx, onSave,
             <option value="buy">Buy / Top Up</option>
             <option value="sell">Sell / Withdraw</option>
             {isManualIncome && <option value="interest">Interest</option>}
-            <option value="dividend">Dividend</option>
+            <option value="dividend">{asset.isSpeculative ? "Profit / Dividend" : "Dividend"}</option>
             <option value="fee">Fee</option>
           </select>
         </Field>

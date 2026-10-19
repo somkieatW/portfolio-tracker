@@ -403,34 +403,35 @@ export function usePortfolioApp() {
     closeSub();
   };
 
+  const persistTransaction = async (tx) => {
+    let savedTx = tx;
+    if (tx.id) {
+      if (supabase) {
+        savedTx = await updateTransaction(tx.id, { ...tx, user_id: userId });
+      } else {
+        savedTx = { ...tx, user_id: userId };
+      }
+      if (savedTx) {
+        setTransactions(prev => prev.map(t => t.id === savedTx.id ? savedTx : t)
+          .sort((a, b) => new Date(b.date) - new Date(a.date)));
+      }
+    } else {
+      if (supabase) {
+        savedTx = await addTransaction({ ...tx, user_id: userId });
+      } else {
+        savedTx = { ...tx, user_id: userId, id: uid() };
+      }
+      if (savedTx) {
+        setTransactions(prev => [savedTx, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
+      }
+    }
+    return savedTx;
+  };
+
   const saveTransaction = async (tx) => {
     try {
       setSaveStatus("saving");
-      let savedTx = tx;
-
-      if (tx.id) {
-        if (supabase) {
-          savedTx = await updateTransaction(tx.id, { ...tx, user_id: userId });
-        } else {
-          savedTx = { ...tx, user_id: userId };
-        }
-
-        if (savedTx) {
-          setTransactions(prev => prev.map(t => t.id === savedTx.id ? savedTx : t)
-            .sort((a, b) => new Date(b.date) - new Date(a.date)));
-        }
-      } else {
-        if (supabase) {
-          savedTx = await addTransaction({ ...tx, user_id: userId });
-        } else {
-          savedTx = { ...tx, user_id: userId, id: uid() };
-        }
-
-        if (savedTx) {
-          setTransactions(prev => [savedTx, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
-        }
-      }
-
+      await persistTransaction(tx);
       setTxModal(null);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(null), 2000);
@@ -439,6 +440,63 @@ export function usePortfolioApp() {
       setSaveStatus("error");
       setTimeout(() => setSaveStatus(null), 3000);
       alert("Failed to save transaction");
+    }
+  };
+
+  const transferFunds = async ({ fromAssetId, toAssetId, amount, fee = 0, date, notes }) => {
+    const from = assets.find(a => a.id === fromAssetId);
+    const to = assets.find(a => a.id === toAssetId);
+    if (!from || !to) throw new Error("Asset not found");
+    if (from.currency !== to.currency) throw new Error("Currency mismatch");
+
+    const isUSD = from.currency === "USD";
+    const extra = notes ? ` — ${notes}` : "";
+    const outNote = `[Transfer] To ${to.name}${extra}`;
+    const inNote = `[Transfer] From ${from.name}${extra}`;
+
+    try {
+      setSaveStatus("saving");
+      const base = { date, currency: from.currency || "THB", notes: null };
+      const sellTx = { ...base, asset_id: fromAssetId, sub_asset_id: null, type: "sell", notes: outNote };
+      const buyTx = { ...base, asset_id: toAssetId, sub_asset_id: null, type: "buy", notes: inNote };
+
+      if (isUSD) {
+        sellTx.amount_usd = -amount;
+        sellTx.amount_thb = +(-amount * usdThbRate).toFixed(2);
+        buyTx.amount_usd = amount;
+        buyTx.amount_thb = +(amount * usdThbRate).toFixed(2);
+      } else {
+        sellTx.amount_thb = -amount;
+        buyTx.amount_thb = amount;
+      }
+
+      await persistTransaction(sellTx);
+      if (fee > 0) {
+        const feeTx = {
+          ...base,
+          asset_id: fromAssetId,
+          sub_asset_id: null,
+          type: "fee",
+          notes: `[Transfer] Fee${extra}`,
+        };
+        if (isUSD) {
+          feeTx.amount_usd = fee;
+          feeTx.amount_thb = +(fee * usdThbRate).toFixed(2);
+        } else {
+          feeTx.amount_thb = fee;
+        }
+        await persistTransaction(feeTx);
+      }
+      await persistTransaction(buyTx);
+      setModal(null);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(null), 2000);
+    } catch (err) {
+      console.error("Failed to transfer:", err);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus(null), 3000);
+      alert("Failed to complete transfer");
+      throw err;
     }
   };
 
@@ -564,6 +622,7 @@ export function usePortfolioApp() {
     deleteSubAsset,
     updateSubValue,
     saveTransaction,
+    transferFunds,
     deleteTx,
     reorderAssets,
     resetToDefaults,
