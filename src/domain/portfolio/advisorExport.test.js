@@ -21,4 +21,5 @@ describe("buildAdvisorExport", () => {
     expect(payload.snapshotHistory[0].user_id).toBeUndefined();
     expect(payload.summary.totalInvest).toBe(1000);
   });
+
 });

@@ -94,7 +94,7 @@ export default function App() {
     activeAssets,
     reorderAssets,
     resetToDefaults,
-    copyAdvisorExport,
+    downloadAdvisorExport,
     advisorExportStatus,
     showClosed,
     setShowClosed,
@@ -463,21 +463,21 @@ export default function App() {
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
               <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: T.text }}>Export for your advisor</p>
               <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
-                Copies a JSON snapshot of your assets, transaction history, daily snapshots, and summary totals to the clipboard. User IDs are omitted.
+                Downloads a JSON file with your assets, transaction history, daily snapshots, and summary totals. User IDs are omitted.
               </p>
               <button
                 type="button"
-                onClick={copyAdvisorExport}
-                disabled={advisorExportStatus === "copying"}
-                style={{ width: "100%", padding: "11px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, fontWeight: 700, cursor: advisorExportStatus === "copying" ? "wait" : "pointer", fontFamily: "inherit" }}
+                onClick={downloadAdvisorExport}
+                disabled={advisorExportStatus === "exporting"}
+                style={{ width: "100%", padding: "11px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, fontWeight: 700, cursor: advisorExportStatus === "exporting" ? "wait" : "pointer", fontFamily: "inherit" }}
               >
-                {advisorExportStatus === "copying"
+                {advisorExportStatus === "exporting"
                   ? "Preparing…"
-                  : advisorExportStatus === "copied"
-                    ? "✓ Copied to clipboard"
+                  : advisorExportStatus === "exported"
+                    ? "✓ Download started"
                     : advisorExportStatus === "error"
-                      ? "Copy failed — try again"
-                      : "📋 Copy portfolio JSON"}
+                      ? "Download failed — try again"
+                      : "⬇ Download portfolio JSON"}
               </button>
             </div>
 

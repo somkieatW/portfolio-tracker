@@ -4,7 +4,7 @@ import { normalizeAssets, sanitizeAsset } from "../../domain/portfolio/assetCalc
 import { derivePortfolioAssets } from "../../domain/portfolio/derivePortfolio.js";
 import { partitionAssets } from "../../domain/portfolio/selectors.js";
 import { computePortfolioMetrics } from "../../domain/portfolio/portfolioMetrics.js";
-import { buildAdvisorExport } from "../../domain/portfolio/advisorExport.js";
+import { buildAdvisorExport, downloadAdvisorJson } from "../../domain/portfolio/advisorExport.js";
 import { normalizeYahooSymbol, getCacheEntry } from "../../domain/pricing/yahooSymbol.js";
 import { applyPriceCacheToAssets, refreshPortfolioPrices, summarizeCacheInfo } from "../services/priceCacheService.js";
 import {
@@ -544,9 +544,9 @@ export function usePortfolioApp() {
     setSettings(DEFAULT_SETTINGS);
   };
 
-  const copyAdvisorExport = async () => {
+  const downloadAdvisorExport = async () => {
     try {
-      setAdvisorExportStatus("copying");
+      setAdvisorExportStatus("exporting");
       const snapshotHistory = userId
         ? await getPortfolioSnapshots(userId, null)
         : snapshots;
@@ -568,26 +568,14 @@ export function usePortfolioApp() {
         snapshots: snapshotHistory,
       });
 
-      const text = JSON.stringify(payload, null, 2);
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-      setAdvisorExportStatus("copied");
+      downloadAdvisorJson(payload);
+      setAdvisorExportStatus("exported");
       setTimeout(() => setAdvisorExportStatus(null), 3000);
     } catch (err) {
       console.error("Advisor export failed:", err);
       setAdvisorExportStatus("error");
       setTimeout(() => setAdvisorExportStatus(null), 3000);
-      alert("Could not copy export. Try again or use a desktop browser.");
+      alert("Could not download export. Please try again.");
     }
   };
 
@@ -685,7 +673,7 @@ export function usePortfolioApp() {
     deleteTx,
     reorderAssets,
     resetToDefaults,
-    copyAdvisorExport,
+    downloadAdvisorExport,
     advisorExportStatus,
   };
 }
