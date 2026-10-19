@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_ASSETS, DEFAULT_SETTINGS } from "../../domain/portfolio/constants.js";
 import { normalizeAssets, sanitizeAsset } from "../../domain/portfolio/assetCalculations.js";
 import { derivePortfolioAssets } from "../../domain/portfolio/derivePortfolio.js";
 import { partitionAssets } from "../../domain/portfolio/selectors.js";
 import { computePortfolioMetrics } from "../../domain/portfolio/portfolioMetrics.js";
+import { buildAdvisorExport } from "../../domain/portfolio/advisorExport.js";
 import { normalizeYahooSymbol, getCacheEntry } from "../../domain/pricing/yahooSymbol.js";
 import { applyPriceCacheToAssets, refreshPortfolioPrices, summarizeCacheInfo } from "../services/priceCacheService.js";
 import {
@@ -49,6 +50,7 @@ export function usePortfolioApp() {
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [editingSubAsset, setEditingSubAsset] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [advisorExportStatus, setAdvisorExportStatus] = useState(null);
   const [txModal, setTxModal] = useState(null);
   const [historyModal, setHistoryModal] = useState(null);
 
@@ -144,8 +146,14 @@ export function usePortfolioApp() {
     return () => clearTimeout(timer);
   }, [assets, settings, loadStatus, userId]);
 
-  const derivedAssets = derivePortfolioAssets(assets, transactions, usdThbRate);
-  const normalizedAssets = normalizeAssets(derivedAssets);
+  const derivedAssets = useMemo(
+    () => derivePortfolioAssets(assets, transactions, usdThbRate),
+    [assets, transactions, usdThbRate],
+  );
+  const normalizedAssets = useMemo(
+    () => normalizeAssets(derivedAssets),
+    [derivedAssets],
+  );
   const {
     activeAssets,
     closedAssets,
@@ -153,7 +161,10 @@ export function usePortfolioApp() {
     speculative,
     totalInvest,
     coreAssetIds,
-  } = partitionAssets(normalizedAssets, transactions);
+  } = useMemo(
+    () => partitionAssets(normalizedAssets, transactions),
+    [normalizedAssets, transactions],
+  );
 
   const {
     totalInvested,
@@ -533,6 +544,53 @@ export function usePortfolioApp() {
     setSettings(DEFAULT_SETTINGS);
   };
 
+  const copyAdvisorExport = async () => {
+    try {
+      setAdvisorExportStatus("copying");
+      const snapshotHistory = userId
+        ? await getPortfolioSnapshots(userId, null)
+        : snapshots;
+
+      const payload = buildAdvisorExport({
+        settings,
+        summary: {
+          totalInvestTHB: totalInvest,
+          totalInvestedTHB: totalInvested,
+          totalSpeculativeTHB: totalSpec,
+          netWorthTHB: netWorth,
+          investmentPLTHB: totalPL,
+          investmentPLPercent: +totalPLpct.toFixed(2),
+          speculationPercentOfCore: +specPct.toFixed(2),
+          usdThbRate,
+        },
+        assets: normalizedAssets,
+        transactions,
+        snapshots: snapshotHistory,
+      });
+
+      const text = JSON.stringify(payload, null, 2);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setAdvisorExportStatus("copied");
+      setTimeout(() => setAdvisorExportStatus(null), 3000);
+    } catch (err) {
+      console.error("Advisor export failed:", err);
+      setAdvisorExportStatus("error");
+      setTimeout(() => setAdvisorExportStatus(null), 3000);
+      alert("Could not copy export. Try again or use a desktop browser.");
+    }
+  };
+
   useEffect(() => {
     if ((tab !== "history" && !historyModal) || !userId) return;
 
@@ -626,5 +684,7 @@ export function usePortfolioApp() {
     deleteTx,
     reorderAssets,
     resetToDefaults,
+    copyAdvisorExport,
+    advisorExportStatus,
   };
 }

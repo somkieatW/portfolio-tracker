@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import Auth from "../Auth.jsx";
 import { usePortfolioApp } from "../application/hooks/usePortfolioApp.js";
@@ -6,8 +6,6 @@ import { TABS, STOCK_GROUP_TYPES } from "../domain/portfolio/constants.js";
 import { calcPL } from "../domain/portfolio/assetCalculations.js";
 import { buildPnlData } from "../domain/portfolio/snapshotSeries.js";
 import { buildPerformanceSeries, formatPriceAge } from "../domain/portfolio/performance.js";
-import { buildBenchmarkSeries, mergeBenchmarkIntoSeries } from "../domain/portfolio/benchmark.js";
-import { fetchHistoricalDailyCloses } from "../infrastructure/external/yahooFinanceService.js";
 import { T } from "./theme/tokens.js";
 import { fmt, fmtTs } from "./utils/format.js";
 import SaveBadge from "./components/common/SaveBadge.jsx";
@@ -95,28 +93,19 @@ export default function App() {
     activeAssets,
     reorderAssets,
     resetToDefaults,
+    copyAdvisorExport,
+    advisorExportStatus,
     showClosed,
     setShowClosed,
     closedAssets,
   } = app;
 
-  const [perfWithBenchmark, setPerfWithBenchmark] = useState([]);
-
-  useEffect(() => {
-    if (tab !== "history" || !snapshots.length) {
-      setPerfWithBenchmark([]);
-      return;
-    }
-    const base = buildPerformanceSeries(snapshots, transactions, investments, totalInvest);
-    const from = snapshots[0].snapshot_date;
-    const to = snapshots[snapshots.length - 1].snapshot_date;
-    fetchHistoricalDailyCloses("^SET.BK", from, to)
-      .then(closes => {
-        const bench = buildBenchmarkSeries(snapshots, closes);
-        setPerfWithBenchmark(mergeBenchmarkIntoSeries(base, bench));
-      })
-      .catch(() => setPerfWithBenchmark(base));
-  }, [tab, snapshots, transactions, investments, totalInvest]);
+  const perfSeries = useMemo(
+    () => (snapshots.length
+      ? buildPerformanceSeries(snapshots, transactions, investments, totalInvest)
+      : []),
+    [snapshots, transactions, investments, totalInvest],
+  );
 
   if (isAuthLoading || (userId && loadStatus === "loading")) {
     return (
@@ -133,9 +122,6 @@ export default function App() {
   }
 
   const pnlData = buildPnlData(snapshots, totalInvest);
-  const perfSeries = perfWithBenchmark.length
-    ? perfWithBenchmark
-    : buildPerformanceSeries(snapshots, transactions, investments, totalInvest);
 
   return (
     <div style={{ background: T.bg, minHeight: "100vh", color: T.text, fontFamily: "'Inter', sans-serif" }}>
@@ -474,6 +460,27 @@ export default function App() {
                 style={{ width: "100%", padding: "11px", borderRadius: 10, border: `1px solid ${T.accent}55`, background: T.accentGlow, color: T.accent, fontSize: 13, fontWeight: 700, cursor: priceRefreshing ? "wait" : "pointer", fontFamily: "inherit" }}
               >
                 {priceRefreshing ? "Refreshing prices…" : "↻ Refresh prices now"}
+              </button>
+            </div>
+
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 20, marginBottom: 14 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: T.text }}>Export for your advisor</p>
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+                Copies a JSON snapshot of your assets, transaction history, daily snapshots, and summary totals to the clipboard. User IDs are omitted.
+              </p>
+              <button
+                type="button"
+                onClick={copyAdvisorExport}
+                disabled={advisorExportStatus === "copying"}
+                style={{ width: "100%", padding: "11px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, fontWeight: 700, cursor: advisorExportStatus === "copying" ? "wait" : "pointer", fontFamily: "inherit" }}
+              >
+                {advisorExportStatus === "copying"
+                  ? "Preparing…"
+                  : advisorExportStatus === "copied"
+                    ? "✓ Copied to clipboard"
+                    : advisorExportStatus === "error"
+                      ? "Copy failed — try again"
+                      : "📋 Copy portfolio JSON"}
               </button>
             </div>
 
