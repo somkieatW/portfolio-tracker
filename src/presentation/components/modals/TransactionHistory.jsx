@@ -7,6 +7,7 @@ import Modal from "../common/Modal.jsx";
 import SnapshotRangeSelector from "../charts/SnapshotRangeSelector.jsx";
 import SnapshotChartPanel from "../charts/SnapshotChartPanel.jsx";
 import PerformanceChart from "../charts/PerformanceChart.jsx";
+import HistoryChartSection from "../charts/HistoryChartSection.jsx";
 
 export default function TransactionHistory({ asset, subAsset, transactions, onDelete, onEdit, onClose, isUSD, snapshots, liveValue, snapshotRange, setSnapshotRange, snapshotLoading }) {
   const name = subAsset ? subAsset.name : asset.name;
@@ -28,44 +29,44 @@ export default function TransactionHistory({ asset, subAsset, transactions, onDe
     <Modal title={`History — ${name}`} onClose={onClose}>
       <SnapshotRangeSelector snapshotRange={snapshotRange} setSnapshotRange={setSnapshotRange} />
 
-      {snapshotLoading ? (
-        <div style={{ textAlign: "center", padding: 30, color: T.muted, fontSize: 13, marginBottom: 16 }}>Loading history…</div>
-      ) : pnlData.length === 0 ? (
-        <div style={{ padding: "30px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13, color: T.muted, textAlign: "center", marginBottom: 16 }}>
-          No snapshot history available for this asset yet.
-        </div>
-      ) : (
-        <>
-          {perfSummary && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-              {[
-                { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
-                { label: "Contributed", value: `฿${fmt(perfSummary.contributed ?? 0)}`, color: T.muted },
-                { label: manualIncome ? `Income earned (${rangeLabel})` : `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
-              ].map(s => (
-                <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {perfSeries.length > 0 && (
-            <PerformanceChart
-              series={perfSeries}
-              valueLabel="Asset value"
-              valueSeriesName="Asset value"
-            />
-          )}
-          <SnapshotChartPanel
-            pnlData={pnlData}
-            lastVal={lastVal}
-            snapshotRange={snapshotRange}
-            candleTitle="Asset Value History (1D)"
-            hideSummary
+      <HistoryChartSection
+        loading={snapshotLoading}
+        hasData={pnlData.length > 0}
+        emptyState={(
+          <div style={{ padding: "30px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 13, color: T.muted, textAlign: "center", marginBottom: 16 }}>
+            No snapshot history available for this asset yet.
+          </div>
+        )}
+      >
+        {perfSummary && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+            {[
+              { label: "Current", value: `฿${fmt(lastVal)}`, color: T.text },
+              { label: "Contributed", value: `฿${fmt(perfSummary.contributed ?? 0)}`, color: T.muted },
+              { label: manualIncome ? `Income earned (${rangeLabel})` : `Market return (${rangeLabel})`, value: `${marketGain >= 0 ? "+" : ""}${perfSummary.marketReturnPct}%`, color: marketColor },
+            ].map(s => (
+              <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ margin: "0 0 4px", fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: s.color }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {perfSeries.length > 0 && (
+          <PerformanceChart
+            series={perfSeries}
+            valueLabel="Asset value"
+            valueSeriesName="Asset value"
           />
-        </>
-      )}
+        )}
+        <SnapshotChartPanel
+          pnlData={pnlData}
+          lastVal={lastVal}
+          snapshotRange={snapshotRange}
+          candleTitle="Asset Value History (1D)"
+          hideSummary
+        />
+      </HistoryChartSection>
 
       {!transactions?.length ? (
         <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8, fontSize: 12, color: T.muted, textAlign: "center" }}>

@@ -22,6 +22,7 @@ import TransferModal from "./components/modals/TransferModal.jsx";
 import PerformanceChart from "./components/charts/PerformanceChart.jsx";
 import SnapshotChartPanel from "./components/charts/SnapshotChartPanel.jsx";
 import SnapshotRangeSelector from "./components/charts/SnapshotRangeSelector.jsx";
+import HistoryChartSection from "./components/charts/HistoryChartSection.jsx";
 import { CustomTip } from "./components/charts/ChartTooltips.jsx";
 import PriceSyncBanner from "./components/sync/PriceSyncBanner.jsx";
 
@@ -406,29 +407,25 @@ export default function App() {
           <div>
             <SnapshotRangeSelector snapshotRange={snapshotRange} setSnapshotRange={setSnapshotRange} />
 
-            {snapshotLoading && (
-              <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>Loading history…</div>
-            )}
-
-            {!snapshotLoading && snapshots.length === 0 && (
-              <div style={{ textAlign: "center", padding: 40, color: T.muted }}>
-                <p style={{ fontSize: 32, marginBottom: 12 }}>📊</p>
-                <p>No snapshot data yet. Snapshots are recorded automatically at midnight ICT each day.</p>
-                <p style={{ fontSize: 12, marginTop: 8, color: T.dim }}>Snapshots run every 3 hours via GitHub Actions. To fill historical gaps, run the <strong>Backfill portfolio snapshots</strong> workflow in GitHub Actions.</p>
-              </div>
-            )}
-
-            {!snapshotLoading && snapshots.length > 0 && (
-              <>
-                <PerformanceChart series={perfSeries} />
-                <SnapshotChartPanel
-                  pnlData={pnlData}
-                  lastVal={totalInvest}
-                  snapshotRange={snapshotRange}
-                  candleTitle="Net Worth History (1D)"
-                />
-              </>
-            )}
+            <HistoryChartSection
+              loading={snapshotLoading}
+              hasData={snapshots.length > 0}
+              emptyState={(
+                <div style={{ textAlign: "center", padding: 40, color: T.muted }}>
+                  <p style={{ fontSize: 32, marginBottom: 12 }}>📊</p>
+                  <p>No snapshot data yet. Snapshots are recorded automatically at midnight ICT each day.</p>
+                  <p style={{ fontSize: 12, marginTop: 8, color: T.dim }}>Snapshots run every 3 hours via GitHub Actions. To fill historical gaps, run the <strong>Backfill portfolio snapshots</strong> workflow in GitHub Actions.</p>
+                </div>
+              )}
+            >
+              <PerformanceChart series={perfSeries} />
+              <SnapshotChartPanel
+                pnlData={pnlData}
+                lastVal={totalInvest}
+                snapshotRange={snapshotRange}
+                candleTitle="Net Worth History (1D)"
+              />
+            </HistoryChartSection>
           </div>
         )}
 

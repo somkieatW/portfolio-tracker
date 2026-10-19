@@ -596,6 +596,7 @@ export function usePortfolioApp() {
 
     if (snapshotCache.current[snapshotRange]) {
       setSnapshots(snapshotCache.current[snapshotRange]);
+      setSnapshotLoading(false);
       return;
     }
 
