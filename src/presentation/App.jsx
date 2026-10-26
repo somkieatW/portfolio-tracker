@@ -103,9 +103,9 @@ export default function App() {
 
   const perfSeries = useMemo(
     () => (snapshots.length
-      ? buildPerformanceSeries(snapshots, transactions, investments, totalInvest)
+      ? buildPerformanceSeries(snapshots, transactions, normalizedAssets, totalInvest)
       : []),
-    [snapshots, transactions, investments, totalInvest],
+    [snapshots, transactions, normalizedAssets, totalInvest],
   );
 
   if (isAuthLoading || (userId && loadStatus === "loading")) {

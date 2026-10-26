@@ -7,9 +7,13 @@ export function calcDerivedTotalsAsOf(txs, isUSD, asOfDate) {
   return calcDerivedTotals(filtered, isUSD);
 }
 
+const hasNonZero = (txs, field) => txs.some(t => Number(t[field]) !== 0 && Number.isFinite(Number(t[field])));
+
 /**
  * For a portfolio asset, return qty/units held on `asOfDate`.
  * Uses transaction history when present; otherwise falls back to stored qty/units.
+ * `unitsTracked` / `qtyTracked` are true when the transactions record that field,
+ * so a derived value of 0 means "nothing held" rather than "not recorded".
  */
 export function holdingsAsOf(asset, transactions, asOfDate) {
   const assetTxs = (transactions || []).filter(
@@ -17,9 +21,21 @@ export function holdingsAsOf(asset, transactions, asOfDate) {
   );
   if (assetTxs.length > 0) {
     const { totalUnits, totalQty } = calcDerivedTotalsAsOf(assetTxs, asset.currency === "USD", asOfDate);
-    return { units: totalUnits, qty: totalQty };
+    return {
+      units: totalUnits,
+      qty: totalQty,
+      fromTransactions: true,
+      unitsTracked: hasNonZero(assetTxs, "units"),
+      qtyTracked: hasNonZero(assetTxs, "qty"),
+    };
   }
-  return { units: Number(asset.units) || 0, qty: Number(asset.qty) || 0 };
+  return {
+    units: Number(asset.units) || 0,
+    qty: Number(asset.qty) || 0,
+    fromTransactions: false,
+    unitsTracked: false,
+    qtyTracked: false,
+  };
 }
 
 export function subHoldingsAsOf(parentId, sub, transactions, asOfDate) {
@@ -28,9 +44,9 @@ export function subHoldingsAsOf(parentId, sub, transactions, asOfDate) {
   );
   if (subTxs.length > 0) {
     const { totalQty } = calcDerivedTotalsAsOf(subTxs, sub.currency === "USD", asOfDate);
-    return { qty: totalQty };
+    return { qty: totalQty, fromTransactions: true, qtyTracked: hasNonZero(subTxs, "qty") };
   }
-  return { qty: Number(sub.qty) || 0 };
+  return { qty: Number(sub.qty) || 0, fromTransactions: false, qtyTracked: false };
 }
 
 export { STOCK_GROUP_TYPES };

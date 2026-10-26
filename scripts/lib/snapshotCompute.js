@@ -28,7 +28,8 @@ function assetValueOnDate(asset, transactions, priceMaps, usdThbByDate, dateStr,
 
   if (asset.finnomenaCode?.trim()) {
     const code = asset.finnomenaCode.trim();
-    const { units } = holdingsAsOf(asset, transactions, dateStr);
+    const { units, unitsTracked } = holdingsAsOf(asset, transactions, dateStr);
+    if (unitsTracked && units <= 0) return 0;
     const navMap = priceMaps.get(code);
     const nav = navMap ? closeOnOrBefore(navMap, dateStr) : null;
     if (nav && units > 0) return units * nav;
@@ -36,7 +37,8 @@ function assetValueOnDate(asset, transactions, priceMaps, usdThbByDate, dateStr,
 
   if (asset.yahooSymbol?.trim()) {
     const sym = normalizeYahooSymbol(asset.yahooSymbol);
-    const { qty } = holdingsAsOf(asset, transactions, dateStr);
+    const { qty, qtyTracked } = holdingsAsOf(asset, transactions, dateStr);
+    if (qtyTracked && qty <= 0) return 0;
     const pxMap = priceMaps.get(sym);
     const px = pxMap ? closeOnOrBefore(pxMap, dateStr) : null;
     if (px && qty > 0) {
@@ -57,7 +59,8 @@ function assetValueOnDate(asset, transactions, priceMaps, usdThbByDate, dateStr,
 
 function subValueOnDate(parentId, sub, transactions, priceMaps, usdThb, dateStr, manualFallback) {
   const sym = normalizeYahooSymbol(sub.yahooSymbol);
-  const { qty } = subHoldingsAsOf(parentId, sub, transactions, dateStr);
+  const { qty, qtyTracked } = subHoldingsAsOf(parentId, sub, transactions, dateStr);
+  if (qtyTracked && qty <= 0) return 0;
   const pxMap = sym ? priceMaps.get(sym) : null;
   const px = pxMap ? closeOnOrBefore(pxMap, dateStr) : null;
   if (px && qty > 0) {

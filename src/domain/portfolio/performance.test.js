@@ -103,6 +103,69 @@ describe("buildPortfolioContributionTimeline", () => {
     expect(timeline.get("2026-01-01")).toBe(60000);
     expect(timeline.get("2026-09-11")).toBe(60000);
   });
+
+  it("nets a transfer out of a deleted bond into cash to zero", () => {
+    const txs = [
+      { asset_id: "bond-deleted", type: "buy", date: "2022-09-21", amount_thb: 20000, created_at: "2022-09-21" },
+      { asset_id: "bond-deleted", type: "interest", date: "2026-09-11", amount_thb: 356.02, created_at: "2026-09-11" },
+      { asset_id: "bond-deleted", type: "sell", date: "2026-09-15", amount_thb: -356.02, created_at: "2026-09-15" },
+      { asset_id: "bond-deleted", type: "buy", date: "2026-09-28", amount_thb: 183.88, created_at: "2026-09-28" },
+      { asset_id: "bond-deleted", type: "sell", date: "2026-10-14", amount_thb: -20183, created_at: "2026-10-14T01" },
+      { asset_id: "dime", type: "buy", date: "2026-09-11", amount_thb: 10000, created_at: "2026-09-11" },
+      { asset_id: "dime", type: "buy", date: "2026-10-14", amount_thb: 20183, created_at: "2026-10-14T02" },
+    ];
+    const assets = [{ id: "dime", type: "cash" }];
+    const timeline = buildPortfolioContributionTimeline(txs, assets);
+    expect(timeline.get("2026-09-28")).toBe(30183.88);
+    expect(timeline.get("2026-10-14")).toBe(30183.88);
+  });
+
+  it("keeps a fully sold closed fund's cash flows so a switch nets to zero", () => {
+    const txs = [
+      { asset_id: "old", type: "buy", date: "2024-03-08", amount_thb: 3000, units: 114.479, created_at: "2024-03-08" },
+      { asset_id: "old", type: "sell", date: "2026-10-19", amount_thb: -4433.06, units: -114.479, created_at: "2026-10-19T01" },
+      { asset_id: "new", type: "buy", date: "2026-10-19", amount_thb: 4433.06, units: 300, created_at: "2026-10-19T02" },
+    ];
+    const assets = [
+      { id: "old", type: "equity", currentValue: 0, units: 0 },
+      { id: "new", type: "equity" },
+    ];
+    const timeline = buildPortfolioContributionTimeline(txs, assets);
+    expect(timeline.get("2024-03-08")).toBe(3000);
+    expect(timeline.get("2026-10-19")).toBe(3000);
+  });
+
+  it("uses stock sub-asset transactions and skips a duplicate parent-level backfill", () => {
+    const txs = [
+      { asset_id: "thai", sub_asset_id: null, type: "buy", date: "2023-08-05", amount_thb: 576.99, created_at: "2023-08-05" },
+      { asset_id: "thai", sub_asset_id: "ptt", type: "buy", date: "2023-08-25", amount_thb: 286.48, created_at: "2023-08-25" },
+      { asset_id: "thai", sub_asset_id: "scb", type: "buy", date: "2023-08-25", amount_thb: 290.51, created_at: "2023-08-25" },
+      { asset_id: "us", sub_asset_id: "msft", type: "buy", date: "2026-02-23", amount_thb: 620.2, created_at: "2026-02-23" },
+    ];
+    const assets = [
+      { id: "thai", type: "thai_stocks", subAssets: [] },
+      { id: "us", type: "us_stocks", subAssets: [] },
+    ];
+    const timeline = buildPortfolioContributionTimeline(txs, assets);
+    expect(contributedUpTo(timeline, "2023-08-10")).toBe(0);
+    expect(timeline.get("2023-08-25")).toBe(576.99);
+    expect(timeline.get("2026-02-23")).toBe(1197.19);
+  });
+
+  it("excludes speculative assets", () => {
+    const txs = [
+      { asset_id: "core", type: "buy", date: "2026-01-01", amount_thb: 1000, created_at: "2026-01-01" },
+      { asset_id: "spec", type: "buy", date: "2026-01-01", amount_thb: 9999, created_at: "2026-01-01" },
+      { asset_id: "spec", type: "dividend", date: "2026-01-02", amount_thb: 500, created_at: "2026-01-02" },
+    ];
+    const assets = [
+      { id: "core", type: "equity" },
+      { id: "spec", type: "forex", isSpeculative: true },
+    ];
+    const timeline = buildPortfolioContributionTimeline(txs, assets);
+    expect(timeline.get("2026-01-01")).toBe(1000);
+    expect(timeline.has("2026-01-02")).toBe(false);
+  });
 });
 
 describe("buildAssetContributionTimeline", () => {

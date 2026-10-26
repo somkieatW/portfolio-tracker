@@ -2,7 +2,8 @@
  * Portfolio performance helpers — separates market gains from cash flows.
  */
 
-import { isManualIncomeAsset } from "./assetCalculations.js";
+import { INCOME_TX_TYPES, isManualIncomeAsset } from "./assetCalculations.js";
+import { STOCK_GROUP_TYPES } from "./constants.js";
 import { buildManualIncomeTimeline, manualIncomeUpTo } from "./manualIncomeLedger.js";
 
 export function formatPriceAge(iso, staleHours = 18) {
@@ -63,17 +64,36 @@ export function buildAssetContributionTimeline(transactions) {
   return byDate;
 }
 
-/** Portfolio net contributions — manual income assets use income-first sell accounting. */
-export function buildPortfolioContributionTimeline(transactions, coreAssets) {
-  const configs = (coreAssets || []).map(asset => {
-    const assetTxs = (transactions || []).filter(
-      t => t.asset_id === asset.id && !t.sub_asset_id,
-    );
-    if (isManualIncomeAsset(asset)) {
-      return { timeline: buildManualIncomeTimeline(assetTxs), manual: true };
-    }
-    return { timeline: buildAssetContributionTimeline(assetTxs), manual: false };
-  });
+function contributionConfig(asset, assetTxs) {
+  if (STOCK_GROUP_TYPES.has(asset?.type)) {
+    const subTxs = assetTxs.filter(t => t.sub_asset_id);
+    const txs = subTxs.length > 0 ? subTxs : assetTxs;
+    return { timeline: buildAssetContributionTimeline(txs), manual: false };
+  }
+  const topLevel = assetTxs.filter(t => !t.sub_asset_id);
+  const manual = asset
+    ? isManualIncomeAsset(asset)
+    : topLevel.some(t => INCOME_TX_TYPES.has(t.type));
+  return manual
+    ? { timeline: buildManualIncomeTimeline(topLevel), manual: true }
+    : { timeline: buildAssetContributionTimeline(topLevel), manual: false };
+}
+
+/**
+ * Portfolio net contributions from every non-speculative transaction — including
+ * closed assets and assets that were deleted but still have transactions, so
+ * transfers between them net to zero. Manual income assets use income-first sells.
+ */
+export function buildPortfolioContributionTimeline(transactions, assets) {
+  const assetById = new Map((assets || []).map(a => [a.id, a]));
+  const txsByAsset = new Map();
+  for (const t of transactions || []) {
+    if (assetById.get(t.asset_id)?.isSpeculative) continue;
+    if (!txsByAsset.has(t.asset_id)) txsByAsset.set(t.asset_id, []);
+    txsByAsset.get(t.asset_id).push(t);
+  }
+
+  const configs = [...txsByAsset].map(([id, assetTxs]) => contributionConfig(assetById.get(id), assetTxs));
 
   const allDates = new Set();
   for (const { timeline } of configs) {
@@ -171,9 +191,9 @@ export function buildAssetPerformanceSeries(assetRows, transactions, liveClose, 
 /**
  * Value vs cumulative contributions — shows market gain separate from deposits.
  */
-export function buildPerformanceSeries(snapshots, transactions, coreAssets, liveClose) {
+export function buildPerformanceSeries(snapshots, transactions, assets, liveClose) {
   if (!snapshots?.length) return [];
-  const byDate = buildPortfolioContributionTimeline(transactions, coreAssets);
+  const byDate = buildPortfolioContributionTimeline(transactions, assets);
   const hasTx = byDate.size > 0;
 
   const series = snapshots.map(s => {

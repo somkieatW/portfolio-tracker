@@ -40,7 +40,8 @@ function computeAssetValue(asset, priceCache, transactions, asOfDate) {
     if (asset.finnomenaCode?.trim()) {
         const code = asset.finnomenaCode.trim();
         const nav = priceCache.get(code);
-        const { units } = holdingsAsOf(asset, transactions, asOfDate);
+        const { units, unitsTracked } = holdingsAsOf(asset, transactions, asOfDate);
+        if (unitsTracked && units <= 0) return 0;
         if (nav && units > 0) return units * nav;
     }
 
@@ -48,7 +49,8 @@ function computeAssetValue(asset, priceCache, transactions, asOfDate) {
     if (asset.yahooSymbol?.trim()) {
         const sym = normalizeYahooSymbol(asset.yahooSymbol);
         const price = sym ? priceCache.get(sym) : null;
-        const { qty } = holdingsAsOf(asset, transactions, asOfDate);
+        const { qty, qtyTracked } = holdingsAsOf(asset, transactions, asOfDate);
+        if (qtyTracked && qty <= 0) return 0;
         if (price && qty > 0) {
             const isUSD = asset.currency === 'USD';
             return isUSD ? qty * price * usdThb : qty * price;
@@ -68,7 +70,8 @@ function computeAssetValue(asset, priceCache, transactions, asOfDate) {
 function computeSubAssetValue(parentId, sub, priceCache, usdThb, transactions, asOfDate) {
     const sym = normalizeYahooSymbol(sub.yahooSymbol);
     const price = sym ? priceCache.get(sym) : null;
-    const { qty } = subHoldingsAsOf(parentId, sub, transactions, asOfDate);
+    const { qty, qtyTracked } = subHoldingsAsOf(parentId, sub, transactions, asOfDate);
+    if (qtyTracked && qty <= 0) return 0;
     if (price && qty > 0) {
         const isUSD = sub.currency === 'USD';
         return isUSD ? qty * price * usdThb : qty * price;
